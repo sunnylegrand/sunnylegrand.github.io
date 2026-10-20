@@ -153,10 +153,11 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
   .wideBtn:disabled{opacity:.45;pointer-events:none;}
   #side{flex:none;display:flex;flex-direction:column;background:var(--panel);border-top:1px solid var(--line-soft);}
   #panelArea{height:238px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3a3a40 transparent;}
-  /* curves tab: grow the panel so header + channel tabs + the whole curve canvas
-     fit above the tab bar — the canvas captures touch (touch-action:none), so any
-     part left below the fold could never be scrolled into reach */
-  #panelArea.tall{height:min(448px,calc(100dvh - 260px));}
+  /* curves tab: the panel may grow, but the photo preview keeps priority —
+     cap the panel at about half the viewport and let the curve canvas shrink
+     elastically inside it (flex column on the curves panel, below) so the
+     stage always keeps the rest of the screen for the photo */
+  #panelArea.tall{height:min(440px,46dvh);}
   #panelArea::-webkit-scrollbar{width:4px;}
   #panelArea::-webkit-scrollbar-thumb{background:#3a3a40;border-radius:2px;}
   .panel{display:none;padding:14px 16px 18px;animation:pin .18s ease;}
@@ -212,8 +213,21 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
   .chanTabs button[data-ch="g"].on{color:#51cf66;border-color:#51cf66;}
   .chanTabs button[data-ch="b"].on{color:#4dabf7;border-color:#4dabf7;}
   #curveWrap{background:#101013;border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;}
-  #curveCanvas{display:block;width:100%;touch-action:none;cursor:crosshair;}
+  #curveCanvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;}
   .curveTools{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  /* curves panel is a flex column filling the (capped) panel area: header,
+     channel tabs, preset row and note keep their natural height, and the
+     curve canvas takes whatever height is left — the panel never grows
+     past its cap and nothing slides under the tab bar */
+  .panel[data-panel="curves"].active{display:flex;flex-direction:column;height:100%;box-sizing:border-box;}
+  .panel[data-panel="curves"] .panelHead,
+  .panel[data-panel="curves"] .chanTabs,
+  .panel[data-panel="curves"] .curveTools,
+  .panel[data-panel="curves"] .noteTxt{flex:none;}
+  .panel[data-panel="curves"] #curveWrap{flex:1 1 auto;min-height:104px;}
+  .panel[data-panel="curves"] .curveTools{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+  .panel[data-panel="curves"] .curveTools::-webkit-scrollbar{display:none;}
+  .panel[data-panel="curves"] .curveTools .chipBtn{flex:none;}
   #hslChips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px;}
   .hchip{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 0 7px;border-radius:11px;background:var(--panel-2);border:1.5px solid transparent;font-size:12px;color:var(--dim);}
   .hchip .dot{width:17px;height:17px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);}
@@ -370,7 +384,7 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
         </div>
         <div id="curveWrap"><canvas id="curveCanvas" height="210"></canvas></div>
         <div class="curveTools" id="curvePresets"></div>
-        <p class="noteTxt">点按曲线添加控制点，拖动调整；双击控制点删除。RGB 为总曲线，红 / 绿 / 蓝为单通道曲线，叠加生效。</p>
+        <p class="noteTxt">点按添加控制点，拖动调整，双击删除。</p>
       </section>
 
       <section class="panel" data-panel="hsl">
@@ -1353,7 +1367,10 @@ var CHAN_COLORS = {rgb:'#e8e8ec', r:'#ff6b6b', g:'#51cf66', b:'#4dabf7'};
 var curveDrag = null;
 function curveSize(){
   var w = curveCanvas.clientWidth || 320;
-  var h = 210;
+  /* height comes from the flex-sized wrap, so the canvas shrinks/grows with
+     the capped panel instead of forcing the panel taller */
+  var wrap = curveCanvas.parentElement;
+  var h = (wrap && wrap.clientHeight) || curveCanvas.clientHeight || 210;
   var dpr = Math.min(window.devicePixelRatio || 1, 2);
   curveCanvas.width = w * dpr;
   curveCanvas.height = h * dpr;

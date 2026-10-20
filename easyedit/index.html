@@ -54,7 +54,7 @@
         position:relative; background:#000; display:flex; align-items:center; justify-content:center;
         height:34dvh; min-height:180px; overflow:hidden;
       }
-      .preview-wrap video{ width:100%; height:100%; object-fit:contain; display:block; background:#000; }
+      .preview-wrap video{ position:absolute; top:50%; left:50%; object-fit:contain; display:block; background:#000; }
       .preview-empty{
         position:absolute; inset:0; display:flex; flex-direction:column; gap:8px;
         align-items:center; justify-content:center; color:var(--dim); text-align:center; padding:20px;
@@ -316,6 +316,14 @@
                 <button class="btn" id="btnMoveR">后移一位</button>
               </div>
               <div class="field" style="margin-top:16px">
+                <div class="flabel"><span>旋转（顺时针角度）</span><b id="clipRotVal">0°</b></div>
+                <div class="btn-row">
+                  <button class="btn" id="btnRotCCW">↺ 逆时针 90°</button>
+                  <button class="btn" id="btnRotCW">顺时针 90° ↻</button>
+                </div>
+                <p class="hint" style="margin-top:8px">竖屏片段旋转 90° 就会变横屏。预览立即生效，导出时按真实旋转处理（宽高互换），不是贴个角度标签。</p>
+              </div>
+              <div class="field" style="margin-top:16px">
                 <div class="flabel"><span>音量</span><b id="clipVolVal">100%</b></div>
                 <input type="range" id="clipVol" min="0" max="150" value="100">
               </div>
@@ -357,7 +365,7 @@
     function uid(){ return "id" + (uidC++) + "_" + Date.now().toString(36); }
     var state = {
       media: [],        // {id,file,url,name,duration,vw,vh,thumb}
-      clips: [],        // {id,mediaId,inn,out,volume,muted}
+      clips: [],        // {id,mediaId,inn,out,volume,muted,rot}  rot=顺时针角度 0/90/180/270
       audios: [],       // {id,name,blob,url,duration,fromName}
       bgm: null,        // {audioId, mode:'mix'|'replace', volume:0..1}
       selectedClipId: null,
@@ -432,7 +440,7 @@
         if (f.type && f.type.indexOf("video/") !== 0 && !/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)) continue;
         var url = URL.createObjectURL(f);
         var meta = await probeVideo(url);
-        state.media.push({ id:uid(), file:f, url:url, name:f.name, duration:meta.duration, vw:meta.vw, vh:meta.vh, thumb:meta.thumb });
+        state.media.push({ id:uid(), file:f, url:url, name:f.name, duration:meta.duration, vw:meta.vw, vh:meta.vh, thumb:meta.thumb, rot:0 });
         added++;
         renderMedia();
       }
@@ -449,14 +457,20 @@
         var meta = document.createElement("div"); meta.className = "meta";
         var nm = document.createElement("div"); nm.className = "name"; nm.textContent = m.name;
         var sub = document.createElement("div"); sub.className = "sub";
-        sub.textContent = "时长 " + fmtDur(m.duration) + (m.vw ? " · " + m.vw + "×" + m.vh : "");
+        sub.textContent = "时长 " + fmtDur(m.duration) + (m.vw ? " · " + m.vw + "×" + m.vh : "") + (m.rot ? " · 预设旋转 " + m.rot + "°" : "");
         meta.appendChild(nm); meta.appendChild(sub);
         var acts = document.createElement("div"); acts.className = "acts";
         var bAdd = document.createElement("button"); bAdd.className = "btn small primary"; bAdd.textContent = "加入时间线";
         bAdd.addEventListener("click", function(){ addToTimeline(m.id); });
         var bExt = document.createElement("button"); bExt.className = "btn small"; bExt.textContent = "提取音频";
         bExt.addEventListener("click", function(){ extractAudio(m.id); });
-        acts.appendChild(bAdd); acts.appendChild(bExt);
+        var bRot = document.createElement("button"); bRot.className = "btn small"; bRot.textContent = "预设旋转 ↻";
+        bRot.addEventListener("click", function(){
+          m.rot = ((m.rot || 0) + 90) % 360;
+          renderMedia();
+          toast(m.rot ? "已预设旋转 " + m.rot + "°，加入时间线时生效" : "已取消预设旋转");
+        });
+        acts.appendChild(bAdd); acts.appendChild(bExt); acts.appendChild(bRot);
         row.appendChild(img); row.appendChild(meta); row.appendChild(acts);
         list.appendChild(row);
       });
@@ -465,7 +479,7 @@
     function addToTimeline(mediaId){
       var m = mediaById(mediaId); if (!m) return;
       if (!m.duration){ toast("这个素材读不到时长，无法加入"); return; }
-      var c = { id:uid(), mediaId:mediaId, inn:0, out:m.duration, volume:1, muted:false };
+      var c = { id:uid(), mediaId:mediaId, inn:0, out:m.duration, volume:1, muted:false, rot:(m.rot || 0) };
       state.clips.push(c);
       state.selectedClipId = c.id;
       renderTimeline(); renderClipPanel(); refreshExportBtn();
@@ -599,7 +613,7 @@
         el.setAttribute("data-cid", c.id);
         if (m && m.thumb) el.style.backgroundImage = "url(" + m.thumb + ")";
         var shade = document.createElement("div"); shade.className = "shade"; el.appendChild(shade);
-        var cd = document.createElement("div"); cd.className = "cdur"; cd.textContent = fmt(d); el.appendChild(cd);
+        var cd = document.createElement("div"); cd.className = "cdur"; cd.textContent = fmt(d) + ((c.rot || 0) ? " · ↻" + c.rot + "°" : ""); el.appendChild(cd);
         if (c.muted){ var mi = document.createElement("div"); mi.className = "mute-ico"; mi.textContent = "🔇"; el.appendChild(mi); }
         var cn = document.createElement("div"); cn.className = "cname"; cn.textContent = m ? m.name : "素材"; el.appendChild(cn);
         var hl = document.createElement("div"); hl.className = "handle l"; hl.setAttribute("data-h", "l"); el.appendChild(hl);
@@ -622,7 +636,7 @@
         if (el){
           el.style.left = x + "px";
           el.style.width = Math.max(d * state.pxPerSec, 8) + "px";
-          var cd = el.querySelector(".cdur"); if (cd) cd.textContent = fmt(d);
+          var cd = el.querySelector(".cdur"); if (cd) cd.textContent = fmt(d) + ((c.rot || 0) ? " · ↻" + c.rot + "°" : "");
         }
         x += d * state.pxPerSec;
       });
@@ -814,6 +828,28 @@
       if (state.bgm && state.bgm.mode === "replace") v = 0;
       video.volume = Math.max(0, Math.min(1, v));
     }
+    /* 按当前片段的旋转角重排预览：元素按源尺寸等比缩放，旋转后整体恰好装进舞台，不拉伸、不裁剪、黑边居中 */
+    function applyPreviewTransform(){
+      var wrap = $("previewWrap");
+      var c = state.clips[pvIdx];
+      if (!c){
+        video.style.width = ""; video.style.height = "";
+        video.style.transform = "translate(-50%,-50%)";
+        return;
+      }
+      var m = mediaById(c.mediaId);
+      var rot = c.rot || 0;
+      var sw = (m && m.vw) || video.videoWidth || 16;
+      var sh = (m && m.vh) || video.videoHeight || 9;
+      var wrapW = wrap.clientWidth, wrapH = wrap.clientHeight;
+      if (!wrapW || !wrapH) return;
+      var ew = (rot % 180 !== 0) ? sh : sw;
+      var eh = (rot % 180 !== 0) ? sw : sh;
+      var s = Math.min(wrapW / ew, wrapH / eh);
+      video.style.width = Math.max(2, Math.round(sw * s)) + "px";
+      video.style.height = Math.max(2, Math.round(sh * s)) + "px";
+      video.style.transform = "translate(-50%,-50%) rotate(" + rot + "deg)";
+    }
     function syncBgmPreview(restart){
       if (!state.bgm){ bgmAudio.pause(); return; }
       var a = audioById(state.bgm.audioId);
@@ -843,6 +879,7 @@
         }
       }
       applyPreviewAudio();
+      applyPreviewTransform();
       var target = clip.inn + loc.local;
       if (Math.abs(video.currentTime - target) > 0.05){
         try { video.currentTime = target; } catch(e){}
@@ -917,8 +954,20 @@
       $("clipRange").textContent = "入点 " + fmt(c.inn) + " · 出点 " + fmt(c.out) + " · 片段时长 " + fmt(clipDur(c)) + (m ? " · 素材总长 " + fmt(m.duration) : "");
       $("clipVol").value = Math.round(c.volume * 100);
       $("clipVolVal").textContent = Math.round(c.volume * 100) + "%";
+      $("clipRotVal").textContent = (c.rot || 0) + "°";
       $("btnMute").textContent = c.muted ? "取消静音" : "静音";
     }
+    /* dir=+1 顺时针 90°，-1 逆时针 90°；旋转后把播放头移到该片段并刷新预览 */
+    function rotateSelectedClip(dir){
+      var c = clipById(state.selectedClipId); if (!c) return;
+      c.rot = (((c.rot || 0) + dir * 90) % 360 + 360) % 360;
+      var idx = state.clips.indexOf(c);
+      renderTimeline(); renderClipPanel();
+      if (idx >= 0){ state.playhead = clipStart(idx); updatePlayheadUI(); }
+      showAt(state.playhead, state.playing);
+    }
+    $("btnRotCW").addEventListener("click", function(){ rotateSelectedClip(1); });
+    $("btnRotCCW").addEventListener("click", function(){ rotateSelectedClip(-1); });
     $("clipVol").addEventListener("input", function(){
       var c = clipById(state.selectedClipId); if (!c) return;
       c.volume = this.value / 100;
@@ -951,7 +1000,7 @@
         return;
       }
       var cut = c.inn + local;
-      var c2 = { id:uid(), mediaId:c.mediaId, inn:cut, out:c.out, volume:c.volume, muted:c.muted };
+      var c2 = { id:uid(), mediaId:c.mediaId, inn:cut, out:c.out, volume:c.volume, muted:c.muted, rot:(c.rot || 0) };
       c.out = cut;
       state.clips.splice(idx + 1, 0, c2);
       state.selectedClipId = c2.id;
@@ -968,7 +1017,7 @@
     $("btnMoveL").addEventListener("click", function(){ moveClip(-1); });
     $("btnMoveR").addEventListener("click", function(){ moveClip(1); });
 
-    window.addEventListener("resize", function(){ renderTimeline(); });
+    window.addEventListener("resize", function(){ renderTimeline(); applyPreviewTransform(); });
     </script>
     <script>
     "use strict";
@@ -1176,6 +1225,19 @@
     /* ================= 导出 ================= */
     $("btnExport").addEventListener("click", function(){ exportVideo(); });
 
+    /* 旋转后有效宽高：90/270 时宽高互换 */
+    function effDims(m, rot){
+      var w = (m && m.vw) || 1280, h = (m && m.vh) || 720;
+      return (rot % 180 !== 0) ? { w:h, h:w } : { w:w, h:h };
+    }
+    /* 顺时针角度 → FFmpeg 旋转滤镜前缀：90°=transpose=1(顺时针)，270°=transpose=2(逆时针90°)，180°=双翻转 */
+    function rotateFilterPrefix(rot){
+      if (rot === 90) return "transpose=1,";
+      if (rot === 270) return "transpose=2,";
+      if (rot === 180) return "hflip,vflip,";
+      return "";
+    }
+
     async function exportVideo(){
       if (!state.clips.length){ toast("时间线是空的"); return; }
       pausePreview();
@@ -1186,12 +1248,13 @@
         checkCancel();
         var fetchFile = window.FFmpegUtil.fetchFile;
         var tot = totalDur();
-        // 目标尺寸：以第一个片段的素材为准，宽不超过 1280，偶数
-        var first = mediaById(state.clips[0].mediaId);
-        var W = (first && first.vw) || 1280, H = (first && first.vh) || 720;
+        // 目标尺寸：以第一个片段的旋转后有效尺寸为准，宽不超过 1280，偶数
+        var firstC = state.clips[0];
+        var firstD = effDims(mediaById(firstC.mediaId), firstC.rot || 0);
+        var W = firstD.w, H = firstD.h;
         if (W > 1280){ H = Math.round(H * 1280 / W); W = 1280; }
         W -= W % 2; H -= H % 2;
-        var vf = "scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease,pad=" + W + ":" + H + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p";
+        var vfBase = "scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease,pad=" + W + ":" + H + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p";
         var n = state.clips.length;
         var segNames = [];
         for (var i=0;i<n;i++){
@@ -1206,7 +1269,8 @@
           await inst.writeFile(inN, await fetchFile(m.file));
           var dur = clipDur(c).toFixed(3);
           setStep(base, each * 0.55, "处理片段 " + (i+1) + "/" + n + "（画面）…");
-          var codeV = await inst.exec(["-ss", c.inn.toFixed(3), "-t", dur, "-i", inN, "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an", vN]);
+          var vf = rotateFilterPrefix(c.rot || 0) + vfBase;
+          var codeV = await inst.exec(["-ss", c.inn.toFixed(3), "-t", dur, "-i", inN, "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an", "-metadata:s:v:0", "rotate=0", vN]);
           if (codeV !== 0) throw new Error("片段 " + (i+1) + " 画面处理失败");
           checkCancel();
           setStep(base + each * 0.55, each * 0.3, "处理片段 " + (i+1) + "/" + n + "（声音）…");

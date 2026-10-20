@@ -202,9 +202,9 @@
       /* ---------- landscape: two columns ---------- */
       @media (orientation:landscape) and (min-width:680px){
         #app{ flex-direction:row; }
-        .stage-col{ flex:1.55 1 0; min-width:0; padding-top:env(safe-area-inset-top,0px); }
-        .side-col{ flex:1 1 0; min-width:320px; border-top:none; border-left:1px solid var(--line); padding-top:env(safe-area-inset-top,0px); }
-        .topbar{ position:absolute; top:0; right:0; left:auto; background:transparent; z-index:20; padding-top:calc(env(safe-area-inset-top,0px) + 8px); }
+        .stage-col{ flex:1.55 1 0; min-width:0; padding-top:env(safe-area-inset-top,0px); padding-left:env(safe-area-inset-left,0px); }
+        .side-col{ flex:1 1 0; min-width:320px; border-top:none; border-left:1px solid var(--line); padding-top:env(safe-area-inset-top,0px); padding-right:env(safe-area-inset-right,0px); }
+        .topbar{ position:absolute; top:0; right:0; left:auto; background:transparent; z-index:20; padding-top:calc(env(safe-area-inset-top,0px) + 8px); padding-right:calc(env(safe-area-inset-right,0px) + 12px); }
         .side-col .tabbar{ margin-top:52px; }
         .preview-wrap{ flex:1 1 auto; height:auto; min-height:0; }
       }
@@ -789,6 +789,7 @@
     var bgmAudio = $("bgmAudio");
     var pvIdx = -1;           // 当前装载到 video 的片段下标
     var pvMediaId = null;
+    var pvToken = 0;          // showAt 竞态令牌：旧的异步定位结果作废，防止画面/时间错位
     var rafId = null;
 
     function locate(t){
@@ -828,6 +829,7 @@
     }
 
     async function showAt(t, autoplay){
+      var myToken = ++pvToken;
       if (!state.clips.length){ pvIdx = -1; pvMediaId = null; video.removeAttribute("src"); return; }
       var loc = locate(t); if (!loc) return;
       var clip = state.clips[loc.idx];
@@ -837,6 +839,7 @@
         if (video.getAttribute("src") !== m.url){
           video.src = m.url;
           await waitEvent(video, "loadedmetadata");
+          if (myToken !== pvToken) return; // 已有更新的定位请求，丢弃这次过期结果
         }
       }
       applyPreviewAudio();
@@ -969,45 +972,66 @@
     </script>
     <script>
     "use strict";
-    /* ================= FFmpeg.wasm 按需加载 ================= */
-    var CDN = "https://cdn.jsdelivr.net/npm";
-    var URLS = {
-      ffmpegJs:  CDN + "/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js",
-      utilJs:    CDN + "/@ffmpeg/util@0.12.1/dist/umd/index.js",
-      workerJs:  CDN + "/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js",
-      coreJs:    CDN + "/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
-      coreWasm:  CDN + "/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm"
-    };
+    /* ================= FFmpeg.wasm 按需加载（主备双源，首屏零外部请求） ================= */
+    var CDN_BASES = ["https://cdn.jsdelivr.net/npm", "https://unpkg.com"];
+    function urlsFor(base){
+      return {
+        ffmpegJs:  base + "/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js",
+        utilJs:    base + "/@ffmpeg/util@0.12.1/dist/umd/index.js",
+        workerJs:  base + "/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js",
+        coreJs:    base + "/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
+        coreWasm:  base + "/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm"
+      };
+    }
     var ff = null, ffReady = false, ffLoading = null;
     var task = { cancel:false, stepBase:0, stepWeight:1, onDone:null };
 
+    var loadedScripts = {};
     function loadScript(src){
+      if (loadedScripts[src]) return Promise.resolve();
       return new Promise(function(res, rej){
         var s = document.createElement("script");
-        s.src = src; s.onload = function(){ res(); };
-        s.onerror = function(){ rej(new Error("脚本加载失败：" + src)); };
+        var to = setTimeout(function(){ rej(new Error("脚本加载超时：" + src)); }, 25000);
+        s.src = src;
+        s.onload = function(){ clearTimeout(to); loadedScripts[src] = 1; res(); };
+        s.onerror = function(){ clearTimeout(to); rej(new Error("脚本加载失败：" + src)); };
         document.head.appendChild(s);
       });
     }
+    /* 带停滞检测的下载：20 秒收不到新数据即中止，交给上层切换备用源，不让用户干等 */
     function fetchBlobProgress(url, mime, onp){
-      return fetch(url).then(function(r){
-        if (!r.ok) throw new Error("下载失败 HTTP " + r.status);
-        var total = parseInt(r.headers.get("content-length") || "0", 10);
-        if (!r.body || !r.body.getReader) return r.blob();
-        var reader = r.body.getReader(), chunks = [], got = 0;
-        function pump(){
-          return reader.read().then(function(x){
-            if (x.done){
-              var b = new Blob(chunks, { type: mime });
-              return b;
-            }
-            chunks.push(x.value); got += x.value.length;
-            if (total) onp(got / total);
-            return pump();
-          });
+      return new Promise(function(resolve, reject){
+        var ctrl = ("AbortController" in window) ? new AbortController() : null;
+        var stallTimer = null, settled = false;
+        function fail(err){ if (!settled){ settled = true; if (stallTimer) clearTimeout(stallTimer); reject(err); } }
+        function armStall(){
+          if (stallTimer) clearTimeout(stallTimer);
+          stallTimer = setTimeout(function(){
+            if (ctrl){ try { ctrl.abort(); } catch(e){} }
+            fail(new Error("下载停滞超时：" + url));
+          }, 20000);
         }
-        return pump();
-      }).then(function(b){ return URL.createObjectURL(b); });
+        armStall();
+        fetch(url, ctrl ? { signal: ctrl.signal } : undefined).then(function(r){
+          if (!r.ok) throw new Error("下载失败 HTTP " + r.status);
+          var total = parseInt(r.headers.get("content-length") || "0", 10);
+          if (!r.body || !r.body.getReader) return r.blob();
+          var reader = r.body.getReader(), chunks = [], got = 0;
+          function pump(){
+            return reader.read().then(function(x){
+              if (x.done) return new Blob(chunks, { type: mime });
+              armStall();
+              chunks.push(x.value); got += x.value.length;
+              if (total) onp(got / total);
+              return pump();
+            });
+          }
+          return pump();
+        }).then(function(b){
+          if (stallTimer) clearTimeout(stallTimer);
+          if (!settled){ settled = true; resolve(URL.createObjectURL(b)); }
+        }).catch(fail);
+      });
     }
 
     /* 任务浮层 */
@@ -1041,37 +1065,54 @@
       setTimeout(ovDone, 350);
     });
 
+    async function loadFFmpegFrom(base, stepLabel){
+      var U = urlsFor(base);
+      await loadScript(U.utilJs);
+      await loadScript(U.ffmpegJs);
+      if (!window.FFmpegWASM) throw new Error("FFmpeg 脚本未就绪");
+      if (!window.FFmpegUtil) throw new Error("FFmpeg 工具脚本未就绪");
+      var parts = [
+        { url: U.coreJs,   mime: "text/javascript",   w: 0.02, key: "coreURL" },
+        { url: U.coreWasm, mime: "application/wasm",  w: 0.90, key: "wasmURL" },
+        { url: U.workerJs, mime: "text/javascript",  w: 0.08, key: "classWorkerURL" }
+      ];
+      var cfg = {}, acc = 0;
+      for (var i=0;i<parts.length;i++){
+        var p = parts[i];
+        var b0 = acc;
+        cfg[p.key] = await fetchBlobProgress(p.url, p.mime, function(f){ ovProgress(b0 + f * p.w); });
+        acc += p.w;
+        checkCancel();
+      }
+      ovStatus(stepLabel || "引擎加载中…");
+      var inst = new window.FFmpegWASM.FFmpeg();
+      inst.on("progress", function(e){
+        if (e && typeof e.progress === "number"){
+          ovProgress(task.stepBase + Math.max(0, Math.min(1, e.progress)) * task.stepWeight);
+        }
+      });
+      await inst.load(cfg);
+      return inst;
+    }
     function ensureFFmpeg(stepLabel){
       if (ffReady && ff) return Promise.resolve(ff);
       if (ffLoading) return ffLoading;
       ffLoading = (async function(){
-        ovStatus("正在下载剪辑引擎（FFmpeg，约 31MB，首次使用才需要，之后浏览器会缓存）…");
-        await loadScript(URLS.utilJs);
-        await loadScript(URLS.ffmpegJs);
-        if (!window.FFmpegWASM) throw new Error("FFmpeg 脚本未就绪");
-        var parts = [
-          { url: URLS.coreJs,   mime: "text/javascript",   w: 0.02, key: "coreURL" },
-          { url: URLS.coreWasm, mime: "application/wasm",  w: 0.90, key: "wasmURL" },
-          { url: URLS.workerJs, mime: "text/javascript",  w: 0.08, key: "classWorkerURL" }
-        ];
-        var cfg = {}, base = 0;
-        for (var i=0;i<parts.length;i++){
-          var p = parts[i];
-          var b = base;
-          cfg[p.key] = await fetchBlobProgress(p.url, p.mime, function(f){ ovProgress(b + f * p.w); });
-          base += p.w;
-        }
-        if (task.cancel) throw new Error("已取消");
-        ovStatus(stepLabel || "引擎加载中…");
-        var inst = new window.FFmpegWASM.FFmpeg();
-        inst.on("progress", function(e){
-          if (e && typeof e.progress === "number"){
-            ovProgress(task.stepBase + Math.max(0, Math.min(1, e.progress)) * task.stepWeight);
+        var lastErr = null;
+        for (var s=0; s<CDN_BASES.length; s++){
+          try {
+            ovStatus(s === 0
+              ? "正在下载剪辑引擎（FFmpeg，约 31MB，首次使用才需要）…"
+              : "主下载源无响应，正在切换备用源重新下载…");
+            var inst = await loadFFmpegFrom(CDN_BASES[s], stepLabel);
+            ff = inst; ffReady = true;
+            return inst;
+          } catch (e) {
+            lastErr = e;
+            if (task.cancel) throw new Error("已取消");
           }
-        });
-        await inst.load(cfg);
-        ff = inst; ffReady = true;
-        return inst;
+        }
+        throw new Error("剪辑引擎下载失败（主、备两个下载源都试过了）：" + (lastErr && lastErr.message ? lastErr.message : lastErr));
       })().catch(function(err){
         ffLoading = null; ff = null; ffReady = false;
         throw err;

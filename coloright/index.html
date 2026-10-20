@@ -1043,6 +1043,10 @@ function rebuildSource(){
   ctx.rotate(state.rot * Math.PI/2);
   ctx.scale(state.flipH ? -1 : 1, state.flipV ? -1 : 1);
   ctx.drawImage(origCanvas, -w/2, -h/2);
+  /* the context is shared by every later write into srcCanvas (erase
+     composite, erase undo, AI apply): leave it at identity, otherwise
+     those draws land translated / rotated / flipped */
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   srcCanvas = c;
   if (mainR) mainR.setImage(srcCanvas);
   if (thumbR) thumbR.setImage(srcCanvas);
@@ -2091,7 +2095,10 @@ function applyErase(){
       backupCanvas.width = W; backupCanvas.height = H;
       backupCanvas.getContext('2d').drawImage(srcCanvas, 0, 0);
       hasBackup = true;
-      srcCanvas.getContext('2d').drawImage(comp, 0, 0);
+      var sctx = srcCanvas.getContext('2d');
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.globalCompositeOperation = 'source-over';
+      sctx.drawImage(comp, 0, 0);
       bakeEraseToOrig();
       if (mainR) mainR.setImage(srcCanvas);
       if (thumbR) thumbR.setImage(srcCanvas);
@@ -2109,7 +2116,10 @@ function applyErase(){
 }
 function undoErase(){
   if (!hasBackup || !backupCanvas || !srcCanvas) return;
-  srcCanvas.getContext('2d').drawImage(backupCanvas, 0, 0);
+  var uctx = srcCanvas.getContext('2d');
+  uctx.setTransform(1, 0, 0, 1, 0, 0);
+  uctx.globalCompositeOperation = 'source-over';
+  uctx.drawImage(backupCanvas, 0, 0);
   bakeEraseToOrig();
   backupCanvas = null; hasBackup = false;
   if (mainR) mainR.setImage(srcCanvas);
@@ -2779,6 +2789,7 @@ function applyCutout(){
       var comp = buildCutComposite(p.mask, p.bg, $('#cutColor').value, srcCanvas.width, srcCanvas.height);
       pushAiBackup();
       var x = srcCanvas.getContext('2d');
+      x.setTransform(1, 0, 0, 1, 0, 0);
       x.globalCompositeOperation = 'source-over';
       x.clearRect(0, 0, srcCanvas.width, srcCanvas.height);
       x.drawImage(comp, 0, 0);
@@ -2897,6 +2908,7 @@ function applyBeauty(){
       var full = buildBeautified(beautyStrength, srcCanvas.width, srcCanvas.height);
       pushAiBackup();
       var x = srcCanvas.getContext('2d');
+      x.setTransform(1, 0, 0, 1, 0, 0);
       x.globalCompositeOperation = 'source-over';
       x.clearRect(0, 0, srcCanvas.width, srcCanvas.height);
       x.drawImage(full, 0, 0);

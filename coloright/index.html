@@ -48,7 +48,9 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
   #main{flex:1;display:flex;flex-direction:column;min-height:0;}
   #topbar{
     height:50px;flex:none;display:flex;align-items:center;gap:2px;
-    padding:0 8px;background:var(--panel);border-bottom:1px solid var(--line-soft);
+    /* standalone (black-translucent status bar) draws the iOS status bar over the
+       page top; push the whole toolbar below it via the safe-area inset */
+    padding:env(safe-area-inset-top) 8px 0;background:var(--panel);border-bottom:1px solid var(--line-soft);
     position:relative;z-index:30;
   }
   .tbtn{
@@ -69,9 +71,15 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
   #exportBtn .lucide{width:17px;height:17px;}
   #stage{flex:1;position:relative;min-height:0;background:var(--stage);overflow:hidden;touch-action:none;}
   #gl{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:2px;box-shadow:0 8px 40px rgba(0,0,0,.55);}
+  /* histogram lives in its own fixed strip under the topbar, never over the photo */
+  #histBar{
+    flex:none;display:none;justify-content:flex-end;padding:6px 10px;
+    background:var(--stage);border-bottom:1px solid var(--line-soft);
+  }
+  #histBar.show{display:flex;}
   #histWrap{
-    position:absolute;top:10px;right:10px;width:132px;height:56px;border-radius:8px;
-    background:rgba(10,10,12,.62);border:1px solid rgba(255,255,255,.08);padding:4px;z-index:6;pointer-events:none;
+    width:132px;height:56px;border-radius:8px;flex:none;
+    background:#0a0a0c;border:1px solid rgba(255,255,255,.14);padding:4px;pointer-events:none;
   }
   #hist{width:100%;height:100%;display:block;}
   #valueToast{
@@ -145,6 +153,10 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
   .wideBtn:disabled{opacity:.45;pointer-events:none;}
   #side{flex:none;display:flex;flex-direction:column;background:var(--panel);border-top:1px solid var(--line-soft);}
   #panelArea{height:238px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3a3a40 transparent;}
+  /* curves tab: grow the panel so header + channel tabs + the whole curve canvas
+     fit above the tab bar — the canvas captures touch (touch-action:none), so any
+     part left below the fold could never be scrolled into reach */
+  #panelArea.tall{height:min(448px,calc(100dvh - 260px));}
   #panelArea::-webkit-scrollbar{width:4px;}
   #panelArea::-webkit-scrollbar-thumb{background:#3a3a40;border-radius:2px;}
   .panel{display:none;padding:14px 16px 18px;animation:pin .18s ease;}
@@ -260,6 +272,7 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
     #app{flex-direction:row;}
     #side{width:392px;flex:none;border-top:none;border-left:1px solid var(--line-soft);height:100dvh;}
     #panelArea{flex:1;height:auto;}
+    #panelArea.tall{height:auto;}
     #toast{bottom:40px;}
     .panel{padding:18px 20px 22px;}
   }
@@ -282,9 +295,10 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
       <button id="exportBtn"><i data-lucide="download"></i>导出</button>
     </header>
 
+    <div id="histBar"><div id="histWrap"><canvas id="hist" width="264" height="104"></canvas></div></div>
+
     <div id="stage">
       <canvas id="gl"></canvas>
-      <div id="histWrap"><canvas id="hist" width="264" height="104"></canvas></div>
       <div id="valueToast"></div>
       <div id="splitLine"><div id="splitHandle"><i data-lucide="chevrons-left-right"></i></div></div>
       <div id="splitTag">左 修图后 · 右 原图</div>
@@ -354,7 +368,7 @@ lucide.createIcons({icons});\``);if(typeof d>"u")throw new Error("`createIcons()
           <button data-ch="g">绿</button>
           <button data-ch="b">蓝</button>
         </div>
-        <div id="curveWrap"><canvas id="curveCanvas" height="230"></canvas></div>
+        <div id="curveWrap"><canvas id="curveCanvas" height="210"></canvas></div>
         <div class="curveTools" id="curvePresets"></div>
         <p class="noteTxt">点按曲线添加控制点，拖动调整；双击控制点删除。RGB 为总曲线，红 / 绿 / 蓝为单通道曲线，叠加生效。</p>
       </section>
@@ -1240,6 +1254,7 @@ function setTab(name){
   activeTab = name;
   $$('.tab').forEach(function(t){ t.classList.toggle('on', t.getAttribute('data-tab') === name); });
   $$('.panel').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-panel') === name); });
+  $('#panelArea').classList.toggle('tall', name === 'curves');
   $('#panelArea').scrollTop = 0;
   var cropMode = (name === 'crop');
   var eraseMode = (name === 'erase');
@@ -1338,7 +1353,7 @@ var CHAN_COLORS = {rgb:'#e8e8ec', r:'#ff6b6b', g:'#51cf66', b:'#4dabf7'};
 var curveDrag = null;
 function curveSize(){
   var w = curveCanvas.clientWidth || 320;
-  var h = 230;
+  var h = 210;
   var dpr = Math.min(window.devicePixelRatio || 1, 2);
   curveCanvas.width = w * dpr;
   curveCanvas.height = h * dpr;
@@ -2151,7 +2166,7 @@ function loadImageElement(src, label, isFile){
     hasImage = true;
     $('#emptyState').classList.remove('show');
     glCanvas.style.display = 'block';
-    $('#histWrap').style.display = 'block';
+    $('#histBar').classList.add('show');
     $('#eraseLayer').classList.toggle('show', activeTab === 'erase');
     syncAllUI();
     layoutCanvas();
@@ -2269,7 +2284,7 @@ function init(){
   /* start with no image: show the picker state */
   hasImage = false;
   glCanvas.style.display = 'none';
-  $('#histWrap').style.display = 'none';
+  $('#histBar').classList.remove('show');
   $('#emptyState').classList.add('show');
   /* preload first sample so the first tap feels instant */
   loadSample(SAMPLES[0]);
@@ -2319,14 +2334,14 @@ init();
 /* ============================== offline support ============================== */
 /* The page is fully self-contained (icon library inlined, system fonts),
    so the only files to cache are this page, the sample photos and the
-   PWA icons — all same-origin. The worker lives in data:application/javascript;base64,LyogQ29sb1JpZ2h0IOKAlCBvZmZsaW5lIGNhY2hlIHdvcmtlci4KICAgUmVnaXN0ZXJlZCBmcm9tIHRoZSBhcHAgcGFnZSB3aXRoIGFuIGV4cGxpY2l0IHNjb3BlIGNvdmVyaW5nIHRoZSBwYWdlLAogICBzbyByZXBlYXQgb3BlbnMgKGluY2x1ZGluZyBmcm9tIHRoZSBob21lIHNjcmVlbikgd29yayB3aXRoIG5vIG5ldHdvcmsuCiAgIEV2ZXJ5dGhpbmcgdGhlIGFwcCBuZWVkcyBpcyBzYW1lLW9yaWdpbjogdGhlIHBhZ2UgaXRzZWxmLCB0aGUgc2FtcGxlCiAgIHBob3RvcyBhbmQgdGhlIFBXQSBpY29ucy4gVGhlIGljb24gbGlicmFyeSBpcyBpbmxpbmVkIGluIHRoZSBwYWdlIGFuZAogICBmb250cyBhcmUgc3lzdGVtIGZvbnRzLCBzbyB0aGVyZSBhcmUgbm8gY3Jvc3Mtb3JpZ2luIGRlcGVuZGVuY2llcy4gKi8KdmFyIENBQ0hFX05BTUUgPSAnY29sb3JpZ2h0LW9mZmxpbmUtdjEnOwp2YXIgQ09SRV9VUkxTID0gWwogICcuLi8nLAogICcuLi9pbmRleC5odG1sJywKICAnLi9zYW1wbGUtbGFuZHNjYXBlLmpwZycsCiAgJy4vc2FtcGxlLXBvcnRyYWl0LmpwZycsCiAgJy4vc2FtcGxlLXN0cmVldC5qcGcnLAogICcuL2ljb24tMTkyLnBuZycsCiAgJy4vaWNvbi01MTIucG5nJywKICAnLi9tYW5pZmVzdC53ZWJtYW5pZmVzdCcsCiAgJy4vc3cuanMnCl07CgpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoJ2luc3RhbGwnLCBmdW5jdGlvbiAoZSkgewogIGUud2FpdFVudGlsKAogICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgewogICAgICByZXR1cm4gUHJvbWlzZS5hbGwoQ09SRV9VUkxTLm1hcChmdW5jdGlvbiAodSkgewogICAgICAgIHJldHVybiBjLmFkZCh1KS5jYXRjaChmdW5jdGlvbiAoKSB7fSk7CiAgICAgIH0pKTsKICAgIH0pLnRoZW4oZnVuY3Rpb24gKCkgeyByZXR1cm4gc2VsZi5za2lwV2FpdGluZygpOyB9KQogICk7Cn0pOwoKc2VsZi5hZGRFdmVudExpc3RlbmVyKCdhY3RpdmF0ZScsIGZ1bmN0aW9uIChlKSB7CiAgZS53YWl0VW50aWwoCiAgICBjYWNoZXMua2V5cygpLnRoZW4oZnVuY3Rpb24gKGtleXMpIHsKICAgICAgcmV0dXJuIFByb21pc2UuYWxsKGtleXMubWFwKGZ1bmN0aW9uIChrKSB7CiAgICAgICAgcmV0dXJuIGsgPT09IENBQ0hFX05BTUUgPyBudWxsIDogY2FjaGVzLmRlbGV0ZShrKTsKICAgICAgfSkpOwogICAgfSkudGhlbihmdW5jdGlvbiAoKSB7IHJldHVybiBzZWxmLmNsaWVudHMuY2xhaW0oKTsgfSkKICApOwp9KTsKCnNlbGYuYWRkRXZlbnRMaXN0ZW5lcignZmV0Y2gnLCBmdW5jdGlvbiAoZSkgewogIHZhciByZXEgPSBlLnJlcXVlc3Q7CiAgaWYgKHJlcS5tZXRob2QgIT09ICdHRVQnKSByZXR1cm47CiAgZS5yZXNwb25kV2l0aCgKICAgIGNhY2hlcy5tYXRjaChyZXEsIHsgaWdub3JlU2VhcmNoOiB0cnVlIH0pLnRoZW4oZnVuY3Rpb24gKGhpdCkgewogICAgICBpZiAoaGl0KSByZXR1cm4gaGl0OwogICAgICByZXR1cm4gZmV0Y2gocmVxKS50aGVuKGZ1bmN0aW9uIChyZXNwKSB7CiAgICAgICAgaWYgKHJlc3AgJiYgKHJlc3Auc3RhdHVzID09PSAyMDAgfHwgcmVzcC50eXBlID09PSAnb3BhcXVlJykpIHsKICAgICAgICAgIHZhciBjb3B5ID0gcmVzcC5jbG9uZSgpOwogICAgICAgICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgeyBjLnB1dChyZXEsIGNvcHkpOyB9KTsKICAgICAgICB9CiAgICAgICAgcmV0dXJuIHJlc3A7CiAgICAgIH0pLmNhdGNoKGZ1bmN0aW9uICgpIHsKICAgICAgICBpZiAocmVxLm1vZGUgPT09ICduYXZpZ2F0ZScpIHJldHVybiBjYWNoZXMubWF0Y2goJy4uL2luZGV4Lmh0bWwnKTsKICAgICAgICByZXR1cm4gUmVzcG9uc2UuZXJyb3IoKTsKICAgICAgfSk7CiAgICB9KQogICk7Cn0pOwo= and is
+   PWA icons — all same-origin. The worker lives in data:application/javascript;base64,LyogQ29sb1JpZ2h0IOKAlCBvZmZsaW5lIGNhY2hlIHdvcmtlci4KICAgUmVnaXN0ZXJlZCBmcm9tIHRoZSBhcHAgcGFnZSB3aXRoIGFuIGV4cGxpY2l0IHNjb3BlIGNvdmVyaW5nIHRoZSBwYWdlLAogICBzbyByZXBlYXQgb3BlbnMgKGluY2x1ZGluZyBmcm9tIHRoZSBob21lIHNjcmVlbikgd29yayB3aXRoIG5vIG5ldHdvcmsuCiAgIEV2ZXJ5dGhpbmcgdGhlIGFwcCBuZWVkcyBpcyBzYW1lLW9yaWdpbjogdGhlIHBhZ2UgaXRzZWxmLCB0aGUgc2FtcGxlCiAgIHBob3RvcyBhbmQgdGhlIFBXQSBpY29ucy4gVGhlIGljb24gbGlicmFyeSBpcyBpbmxpbmVkIGluIHRoZSBwYWdlIGFuZAogICBmb250cyBhcmUgc3lzdGVtIGZvbnRzLCBzbyB0aGVyZSBhcmUgbm8gY3Jvc3Mtb3JpZ2luIGRlcGVuZGVuY2llcy4gKi8KdmFyIENBQ0hFX05BTUUgPSAnY29sb3JpZ2h0LW9mZmxpbmUtdjInOwp2YXIgQ09SRV9VUkxTID0gWwogICcuLi8nLAogICcuLi9pbmRleC5odG1sJywKICAnLi9zYW1wbGUtbGFuZHNjYXBlLmpwZycsCiAgJy4vc2FtcGxlLXBvcnRyYWl0LmpwZycsCiAgJy4vc2FtcGxlLXN0cmVldC5qcGcnLAogICcuL2ljb24tMTkyLnBuZycsCiAgJy4vaWNvbi01MTIucG5nJywKICAnLi9tYW5pZmVzdC53ZWJtYW5pZmVzdCcsCiAgJy4vc3cuanMnCl07CgpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoJ2luc3RhbGwnLCBmdW5jdGlvbiAoZSkgewogIGUud2FpdFVudGlsKAogICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgewogICAgICByZXR1cm4gUHJvbWlzZS5hbGwoQ09SRV9VUkxTLm1hcChmdW5jdGlvbiAodSkgewogICAgICAgIHJldHVybiBjLmFkZCh1KS5jYXRjaChmdW5jdGlvbiAoKSB7fSk7CiAgICAgIH0pKTsKICAgIH0pLnRoZW4oZnVuY3Rpb24gKCkgeyByZXR1cm4gc2VsZi5za2lwV2FpdGluZygpOyB9KQogICk7Cn0pOwoKc2VsZi5hZGRFdmVudExpc3RlbmVyKCdhY3RpdmF0ZScsIGZ1bmN0aW9uIChlKSB7CiAgZS53YWl0VW50aWwoCiAgICBjYWNoZXMua2V5cygpLnRoZW4oZnVuY3Rpb24gKGtleXMpIHsKICAgICAgcmV0dXJuIFByb21pc2UuYWxsKGtleXMubWFwKGZ1bmN0aW9uIChrKSB7CiAgICAgICAgcmV0dXJuIGsgPT09IENBQ0hFX05BTUUgPyBudWxsIDogY2FjaGVzLmRlbGV0ZShrKTsKICAgICAgfSkpOwogICAgfSkudGhlbihmdW5jdGlvbiAoKSB7IHJldHVybiBzZWxmLmNsaWVudHMuY2xhaW0oKTsgfSkKICApOwp9KTsKCnNlbGYuYWRkRXZlbnRMaXN0ZW5lcignZmV0Y2gnLCBmdW5jdGlvbiAoZSkgewogIHZhciByZXEgPSBlLnJlcXVlc3Q7CiAgaWYgKHJlcS5tZXRob2QgIT09ICdHRVQnKSByZXR1cm47CiAgZS5yZXNwb25kV2l0aCgKICAgIGNhY2hlcy5tYXRjaChyZXEsIHsgaWdub3JlU2VhcmNoOiB0cnVlIH0pLnRoZW4oZnVuY3Rpb24gKGhpdCkgewogICAgICBpZiAoaGl0KSByZXR1cm4gaGl0OwogICAgICByZXR1cm4gZmV0Y2gocmVxKS50aGVuKGZ1bmN0aW9uIChyZXNwKSB7CiAgICAgICAgaWYgKHJlc3AgJiYgKHJlc3Auc3RhdHVzID09PSAyMDAgfHwgcmVzcC50eXBlID09PSAnb3BhcXVlJykpIHsKICAgICAgICAgIHZhciBjb3B5ID0gcmVzcC5jbG9uZSgpOwogICAgICAgICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgeyBjLnB1dChyZXEsIGNvcHkpOyB9KTsKICAgICAgICB9CiAgICAgICAgcmV0dXJuIHJlc3A7CiAgICAgIH0pLmNhdGNoKGZ1bmN0aW9uICgpIHsKICAgICAgICBpZiAocmVxLm1vZGUgPT09ICduYXZpZ2F0ZScpIHJldHVybiBjYWNoZXMubWF0Y2goJy4uL2luZGV4Lmh0bWwnKTsKICAgICAgICByZXR1cm4gUmVzcG9uc2UuZXJyb3IoKTsKICAgICAgfSk7CiAgICB9KQogICk7Cn0pOwo= and is
    registered with an explicit scope that covers the page, which is what
    lets repeat opens work with no network at all. */
 (function(){
   if (!('serviceWorker' in navigator)) return;
   try {
     var dirUrl = location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/, '');
-    navigator.serviceWorker.register(dirUrl + 'data:application/javascript;base64,LyogQ29sb1JpZ2h0IOKAlCBvZmZsaW5lIGNhY2hlIHdvcmtlci4KICAgUmVnaXN0ZXJlZCBmcm9tIHRoZSBhcHAgcGFnZSB3aXRoIGFuIGV4cGxpY2l0IHNjb3BlIGNvdmVyaW5nIHRoZSBwYWdlLAogICBzbyByZXBlYXQgb3BlbnMgKGluY2x1ZGluZyBmcm9tIHRoZSBob21lIHNjcmVlbikgd29yayB3aXRoIG5vIG5ldHdvcmsuCiAgIEV2ZXJ5dGhpbmcgdGhlIGFwcCBuZWVkcyBpcyBzYW1lLW9yaWdpbjogdGhlIHBhZ2UgaXRzZWxmLCB0aGUgc2FtcGxlCiAgIHBob3RvcyBhbmQgdGhlIFBXQSBpY29ucy4gVGhlIGljb24gbGlicmFyeSBpcyBpbmxpbmVkIGluIHRoZSBwYWdlIGFuZAogICBmb250cyBhcmUgc3lzdGVtIGZvbnRzLCBzbyB0aGVyZSBhcmUgbm8gY3Jvc3Mtb3JpZ2luIGRlcGVuZGVuY2llcy4gKi8KdmFyIENBQ0hFX05BTUUgPSAnY29sb3JpZ2h0LW9mZmxpbmUtdjEnOwp2YXIgQ09SRV9VUkxTID0gWwogICcuLi8nLAogICcuLi9pbmRleC5odG1sJywKICAnLi9zYW1wbGUtbGFuZHNjYXBlLmpwZycsCiAgJy4vc2FtcGxlLXBvcnRyYWl0LmpwZycsCiAgJy4vc2FtcGxlLXN0cmVldC5qcGcnLAogICcuL2ljb24tMTkyLnBuZycsCiAgJy4vaWNvbi01MTIucG5nJywKICAnLi9tYW5pZmVzdC53ZWJtYW5pZmVzdCcsCiAgJy4vc3cuanMnCl07CgpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoJ2luc3RhbGwnLCBmdW5jdGlvbiAoZSkgewogIGUud2FpdFVudGlsKAogICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgewogICAgICByZXR1cm4gUHJvbWlzZS5hbGwoQ09SRV9VUkxTLm1hcChmdW5jdGlvbiAodSkgewogICAgICAgIHJldHVybiBjLmFkZCh1KS5jYXRjaChmdW5jdGlvbiAoKSB7fSk7CiAgICAgIH0pKTsKICAgIH0pLnRoZW4oZnVuY3Rpb24gKCkgeyByZXR1cm4gc2VsZi5za2lwV2FpdGluZygpOyB9KQogICk7Cn0pOwoKc2VsZi5hZGRFdmVudExpc3RlbmVyKCdhY3RpdmF0ZScsIGZ1bmN0aW9uIChlKSB7CiAgZS53YWl0VW50aWwoCiAgICBjYWNoZXMua2V5cygpLnRoZW4oZnVuY3Rpb24gKGtleXMpIHsKICAgICAgcmV0dXJuIFByb21pc2UuYWxsKGtleXMubWFwKGZ1bmN0aW9uIChrKSB7CiAgICAgICAgcmV0dXJuIGsgPT09IENBQ0hFX05BTUUgPyBudWxsIDogY2FjaGVzLmRlbGV0ZShrKTsKICAgICAgfSkpOwogICAgfSkudGhlbihmdW5jdGlvbiAoKSB7IHJldHVybiBzZWxmLmNsaWVudHMuY2xhaW0oKTsgfSkKICApOwp9KTsKCnNlbGYuYWRkRXZlbnRMaXN0ZW5lcignZmV0Y2gnLCBmdW5jdGlvbiAoZSkgewogIHZhciByZXEgPSBlLnJlcXVlc3Q7CiAgaWYgKHJlcS5tZXRob2QgIT09ICdHRVQnKSByZXR1cm47CiAgZS5yZXNwb25kV2l0aCgKICAgIGNhY2hlcy5tYXRjaChyZXEsIHsgaWdub3JlU2VhcmNoOiB0cnVlIH0pLnRoZW4oZnVuY3Rpb24gKGhpdCkgewogICAgICBpZiAoaGl0KSByZXR1cm4gaGl0OwogICAgICByZXR1cm4gZmV0Y2gocmVxKS50aGVuKGZ1bmN0aW9uIChyZXNwKSB7CiAgICAgICAgaWYgKHJlc3AgJiYgKHJlc3Auc3RhdHVzID09PSAyMDAgfHwgcmVzcC50eXBlID09PSAnb3BhcXVlJykpIHsKICAgICAgICAgIHZhciBjb3B5ID0gcmVzcC5jbG9uZSgpOwogICAgICAgICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgeyBjLnB1dChyZXEsIGNvcHkpOyB9KTsKICAgICAgICB9CiAgICAgICAgcmV0dXJuIHJlc3A7CiAgICAgIH0pLmNhdGNoKGZ1bmN0aW9uICgpIHsKICAgICAgICBpZiAocmVxLm1vZGUgPT09ICduYXZpZ2F0ZScpIHJldHVybiBjYWNoZXMubWF0Y2goJy4uL2luZGV4Lmh0bWwnKTsKICAgICAgICByZXR1cm4gUmVzcG9uc2UuZXJyb3IoKTsKICAgICAgfSk7CiAgICB9KQogICk7Cn0pOwo=', { scope: dirUrl }).catch(function(){});
+    navigator.serviceWorker.register(dirUrl + 'data:application/javascript;base64,LyogQ29sb1JpZ2h0IOKAlCBvZmZsaW5lIGNhY2hlIHdvcmtlci4KICAgUmVnaXN0ZXJlZCBmcm9tIHRoZSBhcHAgcGFnZSB3aXRoIGFuIGV4cGxpY2l0IHNjb3BlIGNvdmVyaW5nIHRoZSBwYWdlLAogICBzbyByZXBlYXQgb3BlbnMgKGluY2x1ZGluZyBmcm9tIHRoZSBob21lIHNjcmVlbikgd29yayB3aXRoIG5vIG5ldHdvcmsuCiAgIEV2ZXJ5dGhpbmcgdGhlIGFwcCBuZWVkcyBpcyBzYW1lLW9yaWdpbjogdGhlIHBhZ2UgaXRzZWxmLCB0aGUgc2FtcGxlCiAgIHBob3RvcyBhbmQgdGhlIFBXQSBpY29ucy4gVGhlIGljb24gbGlicmFyeSBpcyBpbmxpbmVkIGluIHRoZSBwYWdlIGFuZAogICBmb250cyBhcmUgc3lzdGVtIGZvbnRzLCBzbyB0aGVyZSBhcmUgbm8gY3Jvc3Mtb3JpZ2luIGRlcGVuZGVuY2llcy4gKi8KdmFyIENBQ0hFX05BTUUgPSAnY29sb3JpZ2h0LW9mZmxpbmUtdjInOwp2YXIgQ09SRV9VUkxTID0gWwogICcuLi8nLAogICcuLi9pbmRleC5odG1sJywKICAnLi9zYW1wbGUtbGFuZHNjYXBlLmpwZycsCiAgJy4vc2FtcGxlLXBvcnRyYWl0LmpwZycsCiAgJy4vc2FtcGxlLXN0cmVldC5qcGcnLAogICcuL2ljb24tMTkyLnBuZycsCiAgJy4vaWNvbi01MTIucG5nJywKICAnLi9tYW5pZmVzdC53ZWJtYW5pZmVzdCcsCiAgJy4vc3cuanMnCl07CgpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoJ2luc3RhbGwnLCBmdW5jdGlvbiAoZSkgewogIGUud2FpdFVudGlsKAogICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgewogICAgICByZXR1cm4gUHJvbWlzZS5hbGwoQ09SRV9VUkxTLm1hcChmdW5jdGlvbiAodSkgewogICAgICAgIHJldHVybiBjLmFkZCh1KS5jYXRjaChmdW5jdGlvbiAoKSB7fSk7CiAgICAgIH0pKTsKICAgIH0pLnRoZW4oZnVuY3Rpb24gKCkgeyByZXR1cm4gc2VsZi5za2lwV2FpdGluZygpOyB9KQogICk7Cn0pOwoKc2VsZi5hZGRFdmVudExpc3RlbmVyKCdhY3RpdmF0ZScsIGZ1bmN0aW9uIChlKSB7CiAgZS53YWl0VW50aWwoCiAgICBjYWNoZXMua2V5cygpLnRoZW4oZnVuY3Rpb24gKGtleXMpIHsKICAgICAgcmV0dXJuIFByb21pc2UuYWxsKGtleXMubWFwKGZ1bmN0aW9uIChrKSB7CiAgICAgICAgcmV0dXJuIGsgPT09IENBQ0hFX05BTUUgPyBudWxsIDogY2FjaGVzLmRlbGV0ZShrKTsKICAgICAgfSkpOwogICAgfSkudGhlbihmdW5jdGlvbiAoKSB7IHJldHVybiBzZWxmLmNsaWVudHMuY2xhaW0oKTsgfSkKICApOwp9KTsKCnNlbGYuYWRkRXZlbnRMaXN0ZW5lcignZmV0Y2gnLCBmdW5jdGlvbiAoZSkgewogIHZhciByZXEgPSBlLnJlcXVlc3Q7CiAgaWYgKHJlcS5tZXRob2QgIT09ICdHRVQnKSByZXR1cm47CiAgZS5yZXNwb25kV2l0aCgKICAgIGNhY2hlcy5tYXRjaChyZXEsIHsgaWdub3JlU2VhcmNoOiB0cnVlIH0pLnRoZW4oZnVuY3Rpb24gKGhpdCkgewogICAgICBpZiAoaGl0KSByZXR1cm4gaGl0OwogICAgICByZXR1cm4gZmV0Y2gocmVxKS50aGVuKGZ1bmN0aW9uIChyZXNwKSB7CiAgICAgICAgaWYgKHJlc3AgJiYgKHJlc3Auc3RhdHVzID09PSAyMDAgfHwgcmVzcC50eXBlID09PSAnb3BhcXVlJykpIHsKICAgICAgICAgIHZhciBjb3B5ID0gcmVzcC5jbG9uZSgpOwogICAgICAgICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbihmdW5jdGlvbiAoYykgeyBjLnB1dChyZXEsIGNvcHkpOyB9KTsKICAgICAgICB9CiAgICAgICAgcmV0dXJuIHJlc3A7CiAgICAgIH0pLmNhdGNoKGZ1bmN0aW9uICgpIHsKICAgICAgICBpZiAocmVxLm1vZGUgPT09ICduYXZpZ2F0ZScpIHJldHVybiBjYWNoZXMubWF0Y2goJy4uL2luZGV4Lmh0bWwnKTsKICAgICAgICByZXR1cm4gUmVzcG9uc2UuZXJyb3IoKTsKICAgICAgfSk7CiAgICB9KQogICk7Cn0pOwo=', { scope: dirUrl }).catch(function(){});
   } catch (e) {}
 })();
 </script>

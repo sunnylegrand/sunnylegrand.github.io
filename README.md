@@ -1,3 +1,5 @@
-# ColoRight
+# sunnylegrand.github.io
 
-手机修图 App，打开 https://sunnylegrand.github.io/ 即可使用。
+应用索引主页：https://sunnylegrand.github.io/
+
+- **ColoRight**（手机修图）：https://sunnylegrand.github.io/coloright/

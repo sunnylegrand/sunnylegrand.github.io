@@ -133,6 +133,27 @@
       }
       .playhead-grab{ position:absolute; top:0; width:22px; height:26px; margin-left:-11px; z-index:7; cursor:ew-resize; touch-action:none; }
 
+      /* ---------- edit toolbar（显性剪辑键） ---------- */
+      .editbar{ flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 12px 0; flex-wrap:wrap; }
+      .editbar .btn{ flex:0 0 auto; }
+      .editbar .grow{ flex:1; }
+      .kbd{
+        display:inline-block; padding:1px 6px; margin-left:6px; border:1px solid var(--line);
+        border-bottom-width:2px; border-radius:5px; background:var(--panel); color:var(--dim);
+        font-size:11px; line-height:1.5;
+      }
+      .kbd-hint{ flex:0 0 auto; padding:5px 12px 7px; font-size:11.5px; color:var(--dim2); line-height:1.55; }
+      /* 片段上被裁掉部分的阴影（入点左侧 / 出点右侧） */
+      .clip .cut{ position:absolute; top:0; bottom:0; width:0; z-index:1; pointer-events:none;
+        background:repeating-linear-gradient(45deg, rgba(0,0,0,.62) 0 6px, rgba(0,0,0,.38) 6px 12px); }
+      .clip .cut.l{ left:0; border-right:1px solid rgba(255,255,255,.4); }
+      .clip .cut.r{ right:0; border-left:1px solid rgba(255,255,255,.4); }
+      .trim-tip{
+        position:fixed; z-index:45; display:none; pointer-events:none;
+        background:rgba(10,10,12,.93); border:1px solid var(--line); color:var(--text);
+        font-size:12.5px; padding:5px 10px; border-radius:8px; font-variant-numeric:tabular-nums; white-space:nowrap;
+      }
+
       /* ---------- tabs & panels ---------- */
       .tabbar{ flex:0 0 auto; display:flex; border-bottom:1px solid var(--line); }
       .tabbar button{
@@ -241,8 +262,15 @@
           <button id="bgmStripEdit">设置</button>
           <button id="bgmStripOff">移除</button>
         </div>
+        <div class="editbar">
+          <button class="btn small" id="btnSplitTop" disabled>分割<span class="kbd">S</span></button>
+          <button class="btn small" id="btnSetIn" disabled>设为入点<span class="kbd">I</span></button>
+          <button class="btn small" id="btnSetOut" disabled>设为出点<span class="kbd">O</span></button>
+          <div class="grow"></div>
+          <button class="btn small danger" id="btnDelTop" disabled>删除片段<span class="kbd">Del</span></button>
+        </div>
         <div class="timeline-head">
-          <span class="lbl">时间线 · 点选片段后拖两端蓝条裁剪，长按片段可拖动排序</span>
+          <span class="lbl">时间线 · 点标尺或拖播放头定位 · 拖片段左右边缘裁剪 · 鼠标拖片段直接排序（触摸长按）</span>
           <button class="zoom-btn" id="zoomOut">−</button>
           <button class="zoom-btn" id="zoomIn">＋</button>
         </div>
@@ -254,6 +282,7 @@
             <div class="playhead-grab" id="playheadGrab" style="left:12px"></div>
           </div>
         </div>
+        <div class="kbd-hint">快捷键：空格 播放/暂停 · I 设入点 · O 设出点 · S 分割 · Delete 删除片段 · ←/→ 逐帧 · Shift+←/→ 跳 1 秒 · 滚轮横向滚动时间线 · Ctrl+滚轮缩放</div>
       </div>
 
       <div class="side-col">
@@ -353,6 +382,7 @@
       </div>
     </div>
 
+    <div class="trim-tip" id="trimTip"></div>
     <div class="toast" id="toast"></div>
     <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.webm,.mkv,.m4v" multiple hidden>
     <audio id="bgmAudio" loop preload="auto" style="display:none"></audio>
@@ -613,9 +643,12 @@
         el.setAttribute("data-cid", c.id);
         if (m && m.thumb) el.style.backgroundImage = "url(" + m.thumb + ")";
         var shade = document.createElement("div"); shade.className = "shade"; el.appendChild(shade);
+        var cutL = document.createElement("div"); cutL.className = "cut l"; el.appendChild(cutL);
+        var cutR = document.createElement("div"); cutR.className = "cut r"; el.appendChild(cutR);
         var cd = document.createElement("div"); cd.className = "cdur"; cd.textContent = fmt(d) + ((c.rot || 0) ? " · ↻" + c.rot + "°" : ""); el.appendChild(cd);
         if (c.muted){ var mi = document.createElement("div"); mi.className = "mute-ico"; mi.textContent = "🔇"; el.appendChild(mi); }
         var cn = document.createElement("div"); cn.className = "cname"; cn.textContent = m ? m.name : "素材"; el.appendChild(cn);
+        paintCutMarks(el, c);
         var hl = document.createElement("div"); hl.className = "handle l"; hl.setAttribute("data-h", "l"); el.appendChild(hl);
         var hr = document.createElement("div"); hr.className = "handle r"; hr.setAttribute("data-h", "r"); el.appendChild(hr);
         attachClipGestures(el, c);
@@ -625,6 +658,16 @@
       updatePlayheadUI();
       $("tTot").textContent = fmt(tot);
       $("previewEmpty").style.display = state.clips.length ? "none" : "flex";
+    }
+
+    /* 入点/出点标记：片段左右两端按裁掉的时长画斜纹阴影，宽度与时间线同比例（最宽占片段 45%） */
+    function paintCutMarks(el, c){
+      var l = el.querySelector(".cut.l"), r = el.querySelector(".cut.r");
+      if (!l || !r) return;
+      var m = mediaById(c.mediaId); if (!m || !m.duration){ l.style.width = "0px"; r.style.width = "0px"; return; }
+      var wpx = Math.max(clipDur(c) * state.pxPerSec, 8);
+      l.style.width = Math.min(c.inn * state.pxPerSec, wpx * 0.45) + "px";
+      r.style.width = Math.min((m.duration - c.out) * state.pxPerSec, wpx * 0.45) + "px";
     }
 
     /* 裁剪时原地更新布局，避免重建 DOM 打断手势 */
@@ -637,6 +680,7 @@
           el.style.left = x + "px";
           el.style.width = Math.max(d * state.pxPerSec, 8) + "px";
           var cd = el.querySelector(".cdur"); if (cd) cd.textContent = fmt(d) + ((c.rot || 0) ? " · ↻" + c.rot + "°" : "");
+          paintCutMarks(el, c);
         }
         x += d * state.pxPerSec;
       });
@@ -658,6 +702,7 @@
       var tot = totalDur();
       state.playhead = Math.max(0, Math.min(t, tot));
       updatePlayheadUI();
+      if (window.updateEditBar) window.updateEditBar();
       if (preview !== false) showAt(state.playhead, state.playing);
       keepPlayheadVisible();
     }
@@ -701,6 +746,15 @@
     }
     $("zoomIn").addEventListener("click", function(){ setZoom(state.pxPerSec * 1.4); });
     $("zoomOut").addEventListener("click", function(){ setZoom(state.pxPerSec / 1.4); });
+    /* 鼠标滚轮：普通滚轮横向滚动时间线，Ctrl/Cmd+滚轮缩放 */
+    tlScroll.addEventListener("wheel", function(e){
+      if (e.ctrlKey || e.metaKey){
+        e.preventDefault();
+        setZoom(state.pxPerSec * (e.deltaY < 0 ? 1.13 : 1 / 1.13));
+      } else if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){
+        tlScroll.scrollLeft += e.deltaY;
+      }
+    }, { passive:false });
     (function(){
       var pointers = {}, pinchD = 0;
       tlScroll.addEventListener("pointerdown", function(e){ pointers[e.pointerId] = e.clientX; if (Object.keys(pointers).length === 2){ var ks = Object.keys(pointers); pinchD = Math.abs(pointers[ks[0]] - pointers[ks[1]]); } });
@@ -717,11 +771,21 @@
       tlScroll.addEventListener("pointercancel", up);
     })();
 
-    /* 片段手势：点选 / 拖把手裁剪 / 长按拖动排序 */
+    /* 拖边缘裁剪时跟随指针的入点/出点时间浮签 */
+    function showTrimTip(e, text){
+      var tip = $("trimTip");
+      tip.textContent = text; tip.style.display = "block";
+      tip.style.left = Math.max(4, Math.min(e.clientX + 14, window.innerWidth - 200)) + "px";
+      tip.style.top = Math.max(8, e.clientY - 42) + "px";
+    }
+    function hideTrimTip(){ $("trimTip").style.display = "none"; }
+
+    /* 片段手势：点选 / 拖把手裁剪 / 排序（鼠标直接拖，触摸长按拖） */
     function attachClipGestures(el, clip){
-      var startX = 0, mode = null, longTimer = null, moved = false, origIn = 0, origOut = 0, startIdx = 0, startScroll = 0;
+      var startX = 0, mode = null, longTimer = null, moved = false, origIn = 0, origOut = 0, startIdx = 0, startScroll = 0, isMouse = false;
       el.addEventListener("pointerdown", function(e){
         var h = e.target.closest(".handle");
+        isMouse = e.pointerType === "mouse";
         state.selectedClipId = clip.id;
         renderTimelineSelection(); renderClipPanel();
         startX = e.clientX; moved = false; startScroll = tlScroll.scrollLeft;
@@ -748,23 +812,33 @@
         var dx = e.clientX - startX;
         if (Math.abs(dx) > 6) moved = true;
         if (mode === "maybe"){
-          // 未长按前横向滑动 = 滚动时间线
-          if (moved){ clearTimeout(longTimer); tlScroll.scrollLeft = startScroll - dx; }
-          return;
+          if (moved && isMouse){
+            // 鼠标：超过阈值即直接拖动排序，不必长按
+            clearTimeout(longTimer);
+            mode = "drag"; startIdx = state.clips.indexOf(clip);
+            el.classList.add("dragging");
+          } else if (moved){
+            // 触摸未长按前横向滑动 = 滚动时间线
+            clearTimeout(longTimer); tlScroll.scrollLeft = startScroll - dx;
+          }
+          if (mode !== "drag") return;
         }
         var m = mediaById(clip.mediaId); if (!m) return;
         var ds = dx / state.pxPerSec;
         if (mode === "trimL"){
           clip.inn = Math.max(0, Math.min(origIn + ds, clip.out - 0.2));
           layoutClips(); showAt(state.playhead, false);
+          showTrimTip(e, "入点 " + fmt(clip.inn) + " · 片段长 " + fmt(clipDur(clip)));
         } else if (mode === "trimR"){
           clip.out = Math.min(m.duration, Math.max(origOut + ds, clip.inn + 0.2));
           layoutClips(); showAt(state.playhead, false);
+          showTrimTip(e, "出点 " + fmt(clip.out) + " · 片段长 " + fmt(clipDur(clip)));
         } else if (mode === "drag"){
           el.style.transform = "translateX(" + dx + "px)";
         }
       });
       function end(e){
+        hideTrimTip();
         if (longTimer) clearTimeout(longTimer);
         if (mode === "drag"){
           el.style.transform = "";
@@ -948,7 +1022,7 @@
       var c = clipById(state.selectedClipId);
       $("clipNone").style.display = c ? "none" : "block";
       $("clipBox").style.display = c ? "block" : "none";
-      if (!c) return;
+      if (!c){ updateEditBar(); return; }
       var m = mediaById(c.mediaId);
       $("clipName").textContent = m ? m.name : "—";
       $("clipRange").textContent = "入点 " + fmt(c.inn) + " · 出点 " + fmt(c.out) + " · 片段时长 " + fmt(clipDur(c)) + (m ? " · 素材总长 " + fmt(m.duration) : "");
@@ -956,6 +1030,7 @@
       $("clipVolVal").textContent = Math.round(c.volume * 100) + "%";
       $("clipRotVal").textContent = (c.rot || 0) + "°";
       $("btnMute").textContent = c.muted ? "取消静音" : "静音";
+      updateEditBar();
     }
     /* dir=+1 顺时针 90°，-1 逆时针 90°；旋转后把播放头移到该片段并刷新预览 */
     function rotateSelectedClip(dir){
@@ -979,7 +1054,7 @@
       c.muted = !c.muted;
       renderClipPanel(); renderTimeline(); applyPreviewAudio();
     });
-    $("btnDelClip").addEventListener("click", function(){
+    function deleteSelectedClip(){
       var c = clipById(state.selectedClipId); if (!c) return;
       pausePreview();
       state.clips = state.clips.filter(function(x){ return x.id !== c.id; });
@@ -988,24 +1063,114 @@
       if (state.playhead > totalDur()) state.playhead = totalDur();
       renderTimeline(); renderClipPanel(); refreshExportBtn();
       showAt(state.playhead, false);
-    });
-    $("btnSplit").addEventListener("click", function(){
-      var idx = state.clips.findIndex(function(x){ return x.id === state.selectedClipId; });
-      if (idx < 0){ toast("先选中一个片段"); return; }
+    }
+    $("btnDelClip").addEventListener("click", deleteSelectedClip);
+
+    /* 播放头所在片段下标（播放头在末尾时取最后一个片段） */
+    function clipIndexAt(t){
+      var acc = 0;
+      for (var i=0;i<state.clips.length;i++){
+        var d = clipDur(state.clips[i]);
+        if (t < acc + d || i === state.clips.length - 1) return i;
+        acc += d;
+      }
+      return -1;
+    }
+    /* 工具栏/快捷键的操作目标 = 播放头所在片段（并选中它）；返回 {idx, clip, local} */
+    function targetClipForEdit(){
+      if (!state.clips.length){ toast("先把素材加入时间线"); return null; }
+      var idx = clipIndexAt(state.playhead);
+      if (idx < 0) return null;
       var c = state.clips[idx];
-      var start = clipStart(idx);
-      var local = state.playhead - start;
-      if (local <= 0.05 || local >= clipDur(c) - 0.05){
-        toast("播放头不在这个片段中间，先把红色播放头拖到要切开的位置");
+      if (state.selectedClipId !== c.id){
+        state.selectedClipId = c.id;
+        renderTimelineSelection(); renderClipPanel();
+      }
+      return { idx:idx, clip:c, local: state.playhead - clipStart(idx) };
+    }
+    function splitAtPlayhead(){
+      var t = targetClipForEdit(); if (!t) return;
+      var c = t.clip;
+      if (t.local <= 0.05 || t.local >= clipDur(c) - 0.05){
+        toast("播放头不在片段中间，先把红色播放头拖到要切开的位置");
         return;
       }
-      var cut = c.inn + local;
+      var cut = c.inn + t.local;
       var c2 = { id:uid(), mediaId:c.mediaId, inn:cut, out:c.out, volume:c.volume, muted:c.muted, rot:(c.rot || 0) };
       c.out = cut;
-      state.clips.splice(idx + 1, 0, c2);
+      state.clips.splice(t.idx + 1, 0, c2);
       state.selectedClipId = c2.id;
       renderTimeline(); renderClipPanel();
       toast("已在播放头处分割");
+    }
+    $("btnSplit").addEventListener("click", splitAtPlayhead);
+
+    /* 入点/出点与拖边缘写同一份 inn/out，预览、时间线、导出天然一致 */
+    function setInPoint(){
+      var t = targetClipForEdit(); if (!t) return;
+      var c = t.clip;
+      if (t.local <= 0.02){ toast("播放头已经在入点处了"); return; }
+      if (t.local >= clipDur(c) - 0.2){ toast("入点离出点太近，片段至少保留 0.2 秒"); return; }
+      c.inn = c.inn + t.local;
+      renderTimeline(); renderClipPanel();
+      showAt(state.playhead, false);
+      toast("入点已设为 " + fmt(c.inn));
+    }
+    function setOutPoint(){
+      var t = targetClipForEdit(); if (!t) return;
+      var c = t.clip;
+      if (t.local >= clipDur(c) - 0.02){ toast("播放头已经在出点处了"); return; }
+      if (t.local <= 0.2){ toast("出点离入点太近，片段至少保留 0.2 秒"); return; }
+      c.out = c.inn + t.local;
+      renderTimeline(); renderClipPanel();
+      showAt(state.playhead, false);
+      toast("出点已设为 " + fmt(c.out));
+    }
+
+    /* 工具栏按钮可用状态：分割/入点/出点需要播放头落在某个片段上，删除需要有选中片段 */
+    function updateEditBar(){
+      var has = state.clips.length > 0;
+      var dis = !(has && clipIndexAt(state.playhead) >= 0);
+      $("btnSplitTop").disabled = dis;
+      $("btnSetIn").disabled = dis;
+      $("btnSetOut").disabled = dis;
+      $("btnDelTop").disabled = !clipById(state.selectedClipId);
+    }
+    $("btnSplitTop").addEventListener("click", splitAtPlayhead);
+    $("btnSetIn").addEventListener("click", setInPoint);
+    $("btnSetOut").addEventListener("click", setOutPoint);
+    $("btnDelTop").addEventListener("click", deleteSelectedClip);
+
+    /* 键盘快捷键：空格播放/暂停 · I/O 入点/出点 · S 或 Ctrl/Cmd+K 分割 · Delete 删除 · ←/→ 逐帧（Shift 大步） */
+    document.addEventListener("keydown", function(e){
+      var tag = (e.target && e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if ($("overlay").classList.contains("on")) return;
+      var k = e.key;
+      if (k === " "){
+        e.preventDefault();
+        if (state.playing) pausePreview(); else playPreview();
+      } else if (k === "Delete" || k === "Backspace"){
+        if (clipById(state.selectedClipId)){ e.preventDefault(); deleteSelectedClip(); }
+      } else if ((k === "k" || k === "K") && (e.ctrlKey || e.metaKey)){
+        e.preventDefault(); splitAtPlayhead();
+      } else if ((k === "s" || k === "S") && !e.ctrlKey && !e.metaKey){
+        splitAtPlayhead();
+      } else if ((k === "i" || k === "I") && !e.ctrlKey && !e.metaKey){
+        setInPoint();
+      } else if ((k === "o" || k === "O") && !e.ctrlKey && !e.metaKey){
+        setOutPoint();
+      } else if (k === "ArrowLeft"){
+        e.preventDefault(); pausePreview();
+        setPlayhead(state.playhead - (e.shiftKey ? 1 : 1 / 30));
+      } else if (k === "ArrowRight"){
+        e.preventDefault(); pausePreview();
+        setPlayhead(state.playhead + (e.shiftKey ? 1 : 1 / 30));
+      } else if (k === "Home"){
+        e.preventDefault(); setPlayhead(0);
+      } else if (k === "End"){
+        e.preventDefault(); setPlayhead(totalDur());
+      }
     });
     function moveClip(dir){
       var idx = state.clips.findIndex(function(x){ return x.id === state.selectedClipId; });

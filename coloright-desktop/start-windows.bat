@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 cd /d %~dp0
 title ColoRight Desktop
 py -3 coloright_server.py 2>nul
@@ -8,10 +7,11 @@ python coloright_server.py 2>nul
 if %errorlevel% equ 0 goto end
 echo.
 echo ============================================
-echo  没有找到 Python，ColoRight 桌面版需要 Python 才能启动。
-echo  请到 https://www.python.org/downloads/ 下载安装，
-echo  安装时记得勾选 "Add python.exe to PATH"。
-echo  装好后重新双击本文件即可。
+echo  Python was not found on this PC.
+echo  ColoRight Desktop needs Python to start.
+echo  Download it from https://www.python.org/downloads/
+echo  and tick "Add python.exe to PATH" during setup,
+echo  then double-click this file again.
 echo ============================================
 pause
 :end

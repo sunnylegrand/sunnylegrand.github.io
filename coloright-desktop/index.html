@@ -535,7 +535,7 @@ function setUniforms(ctx,p,W,H,showOrig,useCached){
   ctx.uniform1f(U("uDehaze"),s(P.dehaze));ctx.uniform1f(U("uVig"),s(P.vignette));
   ctx.uniform1f(U("uGrain"),s(P.grain));ctx.uniform1f(U("uFade"),s(P.fade));
   ctx.uniform1f(U("uSharp"),s(P.sharpen));ctx.uniform1f(U("uDenoise"),s(P.denoise));
-  ctx.uniform1f(U("uSplit"),parseFloat($("#splitRange").value)/100);
+  ctx.uniform1f(U("uSplit"),THUMB?0:parseFloat($("#splitRange").value)/100);
   ctx.uniform1f(U("uShowOrig"),showOrig?1:0);
   ctx.uniform1fv(U("uHue[0]"),hsl.map(c=>c.h/180));
   ctx.uniform1fv(U("uHslS[0]"),hsl.map(c=>c.s/100));
@@ -559,7 +559,7 @@ function drawGL(ctx,p,W,H,showOrig,useCached){
   setUniforms(ctx,p,W,H,showOrig,useCached);
   ctx.drawArrays(ctx.TRIANGLE_STRIP,0,4);
 }
-let showOrig=false,zoomMode="fit";
+let showOrig=false,zoomMode="fit",THUMB=false;
 function fitSize(){
   const st=$("#stage").getBoundingClientRect();
   const iw=srcCanvas.width,ih=srcCanvas.height;
@@ -647,22 +647,32 @@ const PRESETS=[
  ["高级灰",{contrast:-16,saturation:-34,fade:18,blacks:16,whites:-10,clarity:8}],
 ];
 let curPreset=0;
+let _tc=null,_tgl=null,_tprog=null;
+const IDENT_CURVES=()=>({rgb:[[0,0],[1,1]],r:[[0,0],[1,1]],g:[[0,0],[1,1]],b:[[0,0],[1,1]]});
+const ZERO_HSL=()=>Array.from({length:8},()=>({h:0,s:0,l:0}));
+function syncBlurCanvas(){
+  const bw=256,bh=Math.max(1,Math.round(256*srcCanvas.height/srcCanvas.width));
+  blurCanvas.width=bw;blurCanvas.height=bh;
+  const bx=blurCanvas.getContext("2d");bx.filter="blur(2px)";bx.drawImage(srcCanvas,0,0,bw,bh);bx.filter="none";
+}
 function renderPresetThumbs(){
   const grid=$("#presetGrid");grid.innerHTML="";
-  let tgl=null,tprog=null,tc=null;
   PRESETS.forEach(([name,vals],i)=>{
     const d=document.createElement("div");d.className="preset"+(i===curPreset?" on":"");
     const cv=document.createElement("canvas");cv.width=120;cv.height=90;
     d.appendChild(cv);const lb=document.createElement("div");lb.textContent=name;d.appendChild(lb);
-    d.onclick=()=>{curPreset=i;P={...DEF,...vals};refreshAllSliders();renderPresetThumbs();render();};
+    d.onclick=()=>{curPreset=i;P={...DEF,...vals};curves=IDENT_CURVES();hsl=ZERO_HSL();buildHSL();drawCurveEditor();refreshAllSliders();renderPresetThumbs();render();};
     grid.appendChild(d);
     if(hasImage){
-      if(!tgl){tc=document.createElement("canvas");tgl=tc.getContext("webgl",{preserveDrawingBuffer:true,alpha:true});tprog=makeProg(tgl);}
-      const saved={...P};P={...DEF,...vals};
-      tc.width=120;tc.height=90;
-      drawGL(tgl,tprog,120,90,false,false);
-      cv.getContext("2d").drawImage(tc,0,0);
-      P=saved;
+      if(!_tgl){_tc=document.createElement("canvas");_tgl=_tc.getContext("webgl",{preserveDrawingBuffer:true,alpha:true});_tprog=makeProg(_tgl);}
+      const savedP={...P},savedCurves=curves,savedHsl=hsl;
+      syncBlurCanvas();
+      curves=IDENT_CURVES();hsl=ZERO_HSL();THUMB=true;
+      P={...DEF,...vals};
+      _tc.width=120;_tc.height=90;
+      drawGL(_tgl,_tprog,120,90,false,false);
+      cv.getContext("2d").drawImage(_tc,0,0);
+      P=savedP;curves=savedCurves;hsl=savedHsl;THUMB=false;
     }
   });
 }

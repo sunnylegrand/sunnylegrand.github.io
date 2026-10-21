@@ -1126,7 +1126,7 @@ $("#btnConnTest").onclick=()=>gotoTab("ai");
 "use strict";
 /* ================= ComfyUI bridge ================= */
 const LS_ADDR="crd_addr_v1", LS_TPL="crd_tpl_v1";
-let comfyMode="direct";           // 'proxy' when served by the desktop launcher
+let comfyMode="direct",launcherV=0; // 'proxy' when served by the desktop launcher; launcherV>=2 strips browser origin headers
 let OI=null;                      // object_info cache
 let jobCancel=false, currentPromptId=null;
 const addrInp=$("#comfyAddr");
@@ -1160,7 +1160,7 @@ async function comfyPost(path,body){
 async function detectLauncher(){
   try{
     const r=await fetchT("/launcher-info",{},2500);
-    if(r.ok){const j=await r.json();if(j&&j.ok){comfyMode="proxy";return j;}}
+    if(r.ok){const j=await r.json();if(j&&j.ok){comfyMode="proxy";launcherV=j.v||1;return j;}}
   }catch(e){}
   return null;
 }
@@ -1176,7 +1176,8 @@ async function testConnection(verbose){
     const ver=(st.system&&st.system.comfyui_version)||"未知";
     const dev=(st.devices&&st.devices[0]&&st.devices[0].name)||"";
     setConn(true,"ComfyUI 已连接");
-    $("#comfyInfo").textContent="已连接 · 版本 "+ver+(dev?" · 设备 "+dev:"")+(comfyMode==="proxy"?" · 经本地启动器转发":" · 直连");
+    $("#comfyInfo").textContent="已连接 · 版本 "+ver+(dev?" · 设备 "+dev:"")+(comfyMode==="proxy"?(" · 经本地启动器转发"+(launcherV>=2?"（v2）":"（旧版）")):" · 直连");
+    if(comfyMode==="proxy"&&launcherV<2)showErr("启动器还是旧版：新版启动器才会放行 AI 上传。请替换 coloright_server.py，关掉所有旧的黑色启动器窗口，再重新双击 start-windows.bat 打开页面。");
     await refreshModels();
     if(verbose)toast("已连接 ComfyUI");
     return true;

@@ -88,7 +88,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/comfy/") or self.path == "/comfy":
             self._proxy("GET")
         elif self.path.startswith("/launcher-info"):
-            self._json({"ok": True, "app": "coloright-desktop", "comfy_target": COMFY})
+            self._json({"ok": True, "app": "coloright-desktop", "comfy_target": COMFY, "v": 2})
         else:
             super().do_GET()
 

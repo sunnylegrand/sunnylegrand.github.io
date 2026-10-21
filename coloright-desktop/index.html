@@ -489,8 +489,24 @@ function curveVal(pts,x){
   const p=[...pts].sort((a,b)=>a[0]-b[0]);
   if(p.length===1)return p[0][1];
   if(x<=p[0][0])return p[0][1];if(x>=p[p.length-1][0])return p[p.length-1][1];
-  for(let i=0;i<p.length-1;i++){const a=p[i],b=p[i+1];
-    if(x>=a[0]&&x<=b[0]){const t=(x-a[0])/Math.max(1e-5,b[0]-a[0]);return a[1]+(b[1]-a[1])*(t*t*(3-2*t));}}
+  const n=p.length,dx=[],dy=[],m=[],tg=new Array(n);
+  for(let i=0;i<n-1;i++){dx[i]=Math.max(1e-9,p[i+1][0]-p[i][0]);dy[i]=p[i+1][1]-p[i][1];m[i]=dy[i]/dx[i];}
+  tg[0]=m[0];tg[n-1]=m[n-2];
+  for(let i=1;i<n-1;i++){
+    if(m[i-1]*m[i]<=0)tg[i]=0;
+    else{const w1=2*dx[i]+dx[i-1],w2=dx[i]+2*dx[i-1];tg[i]=(w1+w2)/(w1/m[i-1]+w2/m[i]);}
+  }
+  for(let i=0;i<n-1;i++){
+    if(Math.abs(m[i])<1e-9){tg[i]=0;tg[i+1]=0;}
+    else{const a=tg[i]/m[i],b=tg[i+1]/m[i],s=a*a+b*b;
+      if(s>9){const tau=3/Math.sqrt(s);tg[i]=tau*a*m[i];tg[i+1]=tau*b*m[i];}}
+  }
+  for(let i=0;i<n-1;i++){
+    if(x>=p[i][0]&&x<=p[i+1][0]){
+      const h=dx[i],u=(x-p[i][0])/h,u2=u*u,u3=u2*u;
+      return (2*u3-3*u2+1)*p[i][1]+(u3-2*u2+u)*h*tg[i]+(-2*u3+3*u2)*p[i+1][1]+(u3-u2)*h*tg[i+1];
+    }
+  }
   return x;
 }
 function lutData(){

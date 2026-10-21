@@ -74,12 +74,6 @@ textarea{width:100%;min-height:86px;resize:vertical;line-height:1.5;font-size:12
 .abtn.danger{background:#7f1d1d}
 .chip{padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);font-size:12.5px}
 .chip.on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
-.presetGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.preset{text-align:center;cursor:pointer}
-.preset canvas{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;border:2px solid transparent;display:block;background:#000}
-.preset.on canvas{border-color:var(--acc)}
-.preset div{font-size:11.5px;color:var(--sub);margin-top:4px}
-.preset.on div{color:var(--txt);font-weight:700}
 
 /* sliders */
 .sl{margin:11px 0}
@@ -181,8 +175,6 @@ summary{cursor:pointer;font-size:13px;color:var(--sub)}
 
       <!-- 调整 -->
       <div class="page on" id="page-adjust">
-        <div class="secTitle">预设</div>
-        <div class="presetGrid" id="presetGrid"></div>
         <div class="secTitle">光影</div>
         <div id="slidersLight"></div>
         <div class="row"><button class="abtn ghost" id="btnAuto">自动增强</button></div>
@@ -535,7 +527,7 @@ function setUniforms(ctx,p,W,H,showOrig,useCached){
   ctx.uniform1f(U("uDehaze"),s(P.dehaze));ctx.uniform1f(U("uVig"),s(P.vignette));
   ctx.uniform1f(U("uGrain"),s(P.grain));ctx.uniform1f(U("uFade"),s(P.fade));
   ctx.uniform1f(U("uSharp"),s(P.sharpen));ctx.uniform1f(U("uDenoise"),s(P.denoise));
-  ctx.uniform1f(U("uSplit"),THUMB?0:parseFloat($("#splitRange").value)/100);
+  ctx.uniform1f(U("uSplit"),parseFloat($("#splitRange").value)/100);
   ctx.uniform1f(U("uShowOrig"),showOrig?1:0);
   ctx.uniform1fv(U("uHue[0]"),hsl.map(c=>c.h/180));
   ctx.uniform1fv(U("uHslS[0]"),hsl.map(c=>c.s/100));
@@ -559,7 +551,7 @@ function drawGL(ctx,p,W,H,showOrig,useCached){
   setUniforms(ctx,p,W,H,showOrig,useCached);
   ctx.drawArrays(ctx.TRIANGLE_STRIP,0,4);
 }
-let showOrig=false,zoomMode="fit",THUMB=false;
+let showOrig=false,zoomMode="fit";
 function fitSize(){
   const st=$("#stage").getBoundingClientRect();
   const iw=srcCanvas.width,ih=srcCanvas.height;
@@ -630,53 +622,6 @@ addSlider("#slidersLight","exposure","曝光",-2,2,0.01,fExp);
 [["sharpen","锐化"],["denoise","降噪"]].forEach(([k,lb])=>addSlider("#slidersDetail",k,lb,0,100,1,fPlain));
 function refreshAllSliders(){sliderRefs.forEach(r=>r.refresh());}
 
-/* ---------------- presets ---------------- */
-const PRESETS=[
- ["原图",{}],
- ["鲜明",{contrast:22,saturation:26,vibrance:30,clarity:18,exposure:0.05}],
- ["通透",{dehaze:35,clarity:28,contrast:12,texture:18,whites:14}],
- ["人像",{texture:-22,clarity:-8,vibrance:16,exposure:0.12,highlights:-18,sharpen:22}],
- ["美食",{saturation:32,vibrance:22,contrast:16,temp:10,clarity:14,sharpen:30}],
- ["风景",{dehaze:30,saturation:22,clarity:26,texture:24,blacks:-10}],
- ["日系",{exposure:0.3,fade:32,contrast:-14,highlights:-22,saturation:-8,temp:-6}],
- ["胶片",{grain:52,fade:22,contrast:14,temp:9,vignette:20,saturation:-6}],
- ["黑白",{saturation:-100,contrast:26,clarity:22,texture:16,blacks:-8}],
- ["夜景",{exposure:0.42,shadows:34,highlights:-26,dehaze:20,denoise:32,blacks:-14}],
- ["暖阳",{temp:24,exposure:0.14,saturation:14,vibrance:18,highlights:8}],
- ["冷调",{temp:-24,tint:-6,saturation:6,contrast:16,clarity:12}],
- ["高级灰",{contrast:-16,saturation:-34,fade:18,blacks:16,whites:-10,clarity:8}],
-];
-let curPreset=0;
-let _tc=null,_tgl=null,_tprog=null;
-const IDENT_CURVES=()=>({rgb:[[0,0],[1,1]],r:[[0,0],[1,1]],g:[[0,0],[1,1]],b:[[0,0],[1,1]]});
-const ZERO_HSL=()=>Array.from({length:8},()=>({h:0,s:0,l:0}));
-function syncBlurCanvas(){
-  const bw=256,bh=Math.max(1,Math.round(256*srcCanvas.height/srcCanvas.width));
-  blurCanvas.width=bw;blurCanvas.height=bh;
-  const bx=blurCanvas.getContext("2d");bx.filter="blur(2px)";bx.drawImage(srcCanvas,0,0,bw,bh);bx.filter="none";
-}
-function renderPresetThumbs(){
-  const grid=$("#presetGrid");grid.innerHTML="";
-  PRESETS.forEach(([name,vals],i)=>{
-    const d=document.createElement("div");d.className="preset"+(i===curPreset?" on":"");
-    const cv=document.createElement("canvas");cv.width=120;cv.height=90;
-    d.appendChild(cv);const lb=document.createElement("div");lb.textContent=name;d.appendChild(lb);
-    d.onclick=()=>{curPreset=i;P={...DEF,...vals};curves=IDENT_CURVES();hsl=ZERO_HSL();buildHSL();drawCurveEditor();refreshAllSliders();renderPresetThumbs();render();};
-    grid.appendChild(d);
-    if(hasImage){
-      if(!_tgl){_tc=document.createElement("canvas");_tgl=_tc.getContext("webgl",{preserveDrawingBuffer:true,alpha:true});_tprog=makeProg(_tgl);}
-      const savedP={...P},savedCurves=curves,savedHsl=hsl;
-      syncBlurCanvas();
-      curves=IDENT_CURVES();hsl=ZERO_HSL();THUMB=true;
-      P={...DEF,...vals};
-      _tc.width=120;_tc.height=90;
-      drawGL(_tgl,_tprog,120,90,false,false);
-      cv.getContext("2d").drawImage(_tc,0,0);
-      P=savedP;curves=savedCurves;hsl=savedHsl;THUMB=false;
-    }
-  });
-}
-
 /* ---------------- image loading ---------------- */
 function setSource(canvas,name){
   srcCanvas.width=canvas.width;srcCanvas.height=canvas.height;
@@ -686,7 +631,7 @@ function setSource(canvas,name){
   hasImage=true;srcDirty=true;matteSubject=null;
   $("#stageEmpty").style.display="none";
   $("#fileName").textContent=fileName+" · "+srcCanvas.width+"×"+srcCanvas.height;
-  renderPresetThumbs();render();
+  render();
 }
 function loadFile(file){
   if(!file||!file.type.startsWith("image/")){toast("请选择图片文件");return;}
@@ -736,7 +681,7 @@ $("#btnAuto").onclick=()=>{
   P.vibrance=18;P.clarity=12;
   refreshAllSliders();render();toast("已自动增强，可继续微调");
 };
-$("#btnResetAdj").onclick=()=>{P={...DEF};curPreset=0;curves={rgb:[[0,0],[1,1]],r:[[0,0],[1,1]],g:[[0,0],[1,1]],b:[[0,0],[1,1]]};hsl=Array.from({length:8},()=>({h:0,s:0,l:0}));buildHSL();refreshAllSliders();renderPresetThumbs();render();toast("调整已重置");};
+$("#btnResetAdj").onclick=()=>{P={...DEF};curves={rgb:[[0,0],[1,1]],r:[[0,0],[1,1]],g:[[0,0],[1,1]],b:[[0,0],[1,1]]};hsl=Array.from({length:8},()=>({h:0,s:0,l:0}));buildHSL();refreshAllSliders();render();toast("调整已重置");};
 </script>
 
 <script>
@@ -758,7 +703,7 @@ function restore(s){
   fileName=s.fileName;hasImage=true;srcDirty=true;matteSubject=null;
   $("#stageEmpty").style.display="none";
   $("#fileName").textContent=fileName+" · "+srcCanvas.width+"×"+srcCanvas.height;
-  refreshAllSliders();buildHSL();drawCurveEditor();updateUndoBtns();renderPresetThumbs();render();
+  refreshAllSliders();buildHSL();drawCurveEditor();updateUndoBtns();render();
 }
 function pushUndo(){
   if(!hasImage)return;

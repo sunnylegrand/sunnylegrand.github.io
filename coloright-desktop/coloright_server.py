@@ -54,7 +54,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         rest = self.path[len("/comfy"):] or "/"
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else None
-        headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
+        # Drop browser-origin headers (Origin/Referer/Sec-Fetch-*/Expect): ComfyUI may
+        # reject POSTs whose Origin does not match its own address (the page is served
+        # from this launcher on a different port). As a server-side peer we forward
+        # plain API requests, the same shape curl sends (which works).
+        headers = {k: v for k, v in self.headers.items()
+                   if k.lower() not in HOP and k.lower() not in ("origin", "referer", "expect")
+                   and not k.lower().startswith("sec-fetch-")}
         conn_cls = http.client.HTTPSConnection if COMFY_TLS else http.client.HTTPConnection
         conn = conn_cls(COMFY_HOST, COMFY_PORT, timeout=120)
         try:

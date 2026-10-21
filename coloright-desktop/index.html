@@ -645,6 +645,7 @@ function setSource(canvas,name){
   srcCtx.drawImage(canvas,0,0);
   if(name)fileName=name;
   hasImage=true;srcDirty=true;matteSubject=null;
+  maskCanvas.width=0;maskVersion++;
   $("#stageEmpty").style.display="none";
   $("#fileName").textContent=fileName+" · "+srcCanvas.width+"×"+srcCanvas.height;
   render();
@@ -934,7 +935,7 @@ const brushCv=$("#brushCanvas"),brushCtx=brushCv.getContext("2d");
 function ensureMask(){
   if(maskCanvas.width!==srcCanvas.width||maskCanvas.height!==srcCanvas.height){
     maskCanvas.width=srcCanvas.width;maskCanvas.height=srcCanvas.height;
-    maskCtx.fillStyle="#000";maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);}
+    maskCtx.fillStyle="#000";maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);maskVersion++;}
 }
 function maskHasContent(){
   if(!maskCanvas.width)return false;
@@ -944,14 +945,23 @@ function maskHasContent(){
 }
 let brushHover=null,overlayQueued=false;
 function queueOverlay(){if(overlayQueued)return;overlayQueued=true;requestAnimationFrame(()=>{overlayQueued=false;drawBrushOverlay();});}
+let maskVersion=0,tintCache=null,tintCacheVer=-1,tintCacheW=0,tintCacheH=0;
+function buildTint(){
+  const t=document.createElement("canvas");t.width=brushCv.width;t.height=brushCv.height;
+  const tx=t.getContext("2d");
+  tx.drawImage(maskCanvas,0,0,t.width,t.height);
+  const id=tx.getImageData(0,0,t.width,t.height),d=id.data;
+  for(let i=0;i<d.length;i+=4){const a=d[i];d[i]=59;d[i+1]=130;d[i+2]=246;d[i+3]=Math.round(a*0.55);}
+  tx.putImageData(id,0,0);
+  return t;
+}
 function drawBrushOverlay(){
   brushCv.width=glc.width;brushCv.height=glc.height;
   brushCtx.clearRect(0,0,brushCv.width,brushCv.height);
   if(maskCanvas.width){
-    const t=document.createElement("canvas");t.width=brushCv.width;t.height=brushCv.height;
-    const tx=t.getContext("2d");tx.drawImage(maskCanvas,0,0,t.width,t.height);
-    tx.globalCompositeOperation="source-in";tx.fillStyle="rgba(59,130,246,.5)";tx.fillRect(0,0,t.width,t.height);
-    brushCtx.drawImage(t,0,0);
+    if(!tintCache||tintCacheVer!==maskVersion||tintCacheW!==brushCv.width||tintCacheH!==brushCv.height){
+      tintCache=buildTint();tintCacheVer=maskVersion;tintCacheW=brushCv.width;tintCacheH=brushCv.height;}
+    brushCtx.drawImage(tintCache,0,0);
   }
   if(eraseOn&&brushHover){
     const dpr=brushCv.width/Math.max(1,brushCv.clientWidth);
@@ -982,7 +992,7 @@ brushCv.addEventListener("pointerdown",e=>{
   if(!eraseOn||!hasImage)return;ensureMask();brushing=true;brushCv.setPointerCapture(e.pointerId);
   lastBP=brushPoint(e);
   maskCtx.fillStyle="#fff";maskCtx.beginPath();maskCtx.arc(lastBP.x,lastBP.y,brushSize/2/srcCanvasScale(),0,7);maskCtx.fill();
-  drawBrushOverlay();updateEraseBtns();});
+  maskVersion++;drawBrushOverlay();updateEraseBtns();});
 brushCv.addEventListener("pointermove",e=>{
   if(eraseOn){const r=brushCv.getBoundingClientRect();brushHover={x:(e.clientX-r.left)/r.width*brushCv.width,y:(e.clientY-r.top)/r.height*brushCv.height};}
   if(!brushing||!eraseOn){if(eraseOn)queueOverlay();return;}
@@ -990,7 +1000,7 @@ brushCv.addEventListener("pointermove",e=>{
   maskCtx.strokeStyle="#fff";maskCtx.lineCap="round";maskCtx.lineJoin="round";
   maskCtx.lineWidth=brushSize/srcCanvasScale();
   maskCtx.beginPath();maskCtx.moveTo(lastBP.x,lastBP.y);maskCtx.lineTo(p.x,p.y);maskCtx.stroke();
-  lastBP=p;queueOverlay();});
+  lastBP=p;maskVersion++;queueOverlay();});
 brushCv.addEventListener("pointerleave",()=>{brushHover=null;queueOverlay();});
 brushCv.addEventListener("pointerup",()=>{brushing=false;updateEraseBtns();});
 function setEraseMode(on){
@@ -1004,7 +1014,7 @@ $("#btnEraseMode").onclick=()=>{setEraseMode(!eraseOn);if(eraseOn)gotoTab("erase
 function exitEraseMode(){setEraseMode(false);}
 $("#btnEraseClear").onclick=()=>{
   maskCtx.fillStyle="#000";maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);
-  drawBrushOverlay();updateEraseBtns();};
+  maskVersion++;drawBrushOverlay();updateEraseBtns();};
 function diffuseFill(img,mask,w,h){
   // iterative neighbor diffusion on ImageData-like arrays; mask: Uint8 (255=to fill)
   let known=new Uint8Array(w*h),data=new Float32Array(w*h*3);
@@ -1077,7 +1087,7 @@ $("#btnEraseRun").onclick=()=>{
     cx.drawImage(layer,0,0);
     setSource(comp,fileName);
     maskCtx.fillStyle="#000";maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);
-    exitEraseMode();updateEraseBtns();toast("消除完成");
+    maskVersion++;exitEraseMode();updateEraseBtns();toast("消除完成");
   },30);
 };
 $("#btnEraseUndo").onclick=()=>{
@@ -1137,8 +1147,8 @@ async function fetchT(url,opts,ms){
   try{return await fetch(url,{...opts,signal:ctl.signal});}
   finally{clearTimeout(t);}
 }
-async function comfyGet(path){
-  const r=await fetchT(comfyBase()+path,{},20000);
+async function comfyGet(path,ms){
+  const r=await fetchT(comfyBase()+path,{},ms||20000);
   if(!r.ok)throw new Error("ComfyUI 返回 HTTP "+r.status);
   return r.json();
 }
@@ -1179,9 +1189,13 @@ async function testConnection(verbose){
   }
 }
 function oiOptions(node,key){
-  try{const n=OI[node];if(!n)return[];const req=n.input.required[key]||n.input.optional&&n.input.optional[key];return Array.isArray(req[0])?req[0]:[];}
+  try{const n=OI[node];if(!n)return[];const grp=(n.input.required&&n.input.required[key])||(n.input.optional&&n.input.optional[key]);if(!grp)return[];
+    if(Array.isArray(grp[0]))return grp[0];
+    if(grp[0]==="COMBO"&&grp[1]&&Array.isArray(grp[1].options))return grp[1].options;
+    return[];}
   catch(e){return[];}
 }
+function imgUpscaleOptions(){return oiOptions("UpscaleModelLoader","model_name").filter(v=>!/^ltx[-_]/i.test(v));}
 function fillSelect(sel,items,prefer){
   const el=$(sel);const old=el.value;el.innerHTML="";
   items.forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;el.appendChild(o);});
@@ -1191,7 +1205,7 @@ function fillSelect(sel,items,prefer){
 }
 async function refreshModels(){
   try{
-    OI=await comfyGet("/object_info");
+    OI=await comfyGet("/object_info",120000);
   }catch(e){showErr("读取模型列表失败："+e.message);return;}
   fillSelect("#inpCkpt",oiOptions("UNETLoader","unet_name"),/flux-2-klein-4b/);
   fillSelect("#inpClip",oiOptions("CLIPLoader","clip_name"),/qwen_3_4b/);
@@ -1199,10 +1213,10 @@ async function refreshModels(){
   fillSelect("#enhCkpt",oiOptions("UNETLoader","unet_name"),/qwen_image_edit_2511_bf16/);
   fillSelect("#enhClip",oiOptions("CLIPLoader","clip_name"),/qwen_2\.5_vl/);
   fillSelect("#enhVae",oiOptions("VAELoader","vae_name"),/qwen_image_vae/);
-  fillSelect("#zDiff",oiOptions("UNETLoader","unet_name"),/z[-_ ]?image/i);
+  fillSelect("#zDiff",oiOptions("UNETLoader","unet_name"),/z[-_ ]?image[-_ ]?turbo/i);
   fillSelect("#zClip",oiOptions("CLIPLoader","clip_name"),/qwen_3_4b/i);
   fillSelect("#zVae",oiOptions("VAELoader","vae_name"),/^ae\.safetensors$/i);
-  fillSelect("#upModel",oiOptions("UpscaleModelLoader","model_name"));
+  fillSelect("#upModel",imgUpscaleOptions());
   if(OI["LayerMask: RmBgUltra V2"])fillSelect("#matClass",oiOptions("LayerMask: RmBgUltra V2","detail_method"),/GuidedFilter/);
   else fillSelect("#matClass",[]);
   updateAiWarnings();
@@ -1212,7 +1226,7 @@ function updateAiWarnings(){
   if(OI){
     if(!OI["LayerMask: RmBgUltra V2"])
       w.push("抠图：没找到 LayerStyle 的 RmBgUltra V2 节点（需要 ComfyUI_LayerStyle 插件），且其 RMBG-1.4\\model.pth 权重需放进 custom_nodes\\ComfyUI_LayerStyle\\RMBG-1.4 文件夹，装好后点「刷新模型列表」。");
-    if(!oiOptions("UpscaleModelLoader","model_name").length)
+    if(!imgUpscaleOptions().length)
       w.push("放大：没有可用的图片放大模型。把一个 ESRGAN 类 .pth（如 RealESRGAN_x4plus）放进 ComfyUI 的 models/upscale_models 文件夹，重启 ComfyUI 后点「刷新模型列表」。注意：LTX 的视频放大模型不能用于照片放大。");
     if(!oiOptions("UNETLoader","unet_name").length&&!oiOptions("CheckpointLoaderSimple","ckpt_name").length)
       w.push("没找到任何生成模型：请确认 ComfyUI 的 models 目录里有绘图模型。");
@@ -1313,7 +1327,7 @@ function blobToCanvas(blob){
 async function uploadBlob(blob,name){
   const fd=new FormData();fd.append("image",blob,name);fd.append("overwrite","true");
   const r=await fetchT(comfyBase()+"/upload/image",{method:"POST",body:fd},60000);
-  if(!r.ok)throw new Error("上传图片到 ComfyUI 失败（HTTP "+r.status+"）");
+  if(!r.ok){let txt="";try{txt=await r.text();}catch(e){}throw new Error("上传图片到 ComfyUI 失败（HTTP "+r.status+(txt?"："+txt.slice(0,200):"")+"）");}
   const j=await r.json();return j.name;
 }
 function setJob(on,text){
@@ -1360,7 +1374,7 @@ async function runWorkflow(wf,label){
       if(imgs&&imgs.length){
         const im=imgs[0];
         const url=comfyBase()+"/view?filename="+encodeURIComponent(im.filename)+"&subfolder="+encodeURIComponent(im.subfolder||"")+"&type="+(im.type||"output");
-        const r=await fetchT(url,{},60000);
+        const r=await fetchT(url,{},300000);
         if(!r.ok)throw new Error("取回结果图失败（HTTP "+r.status+"）");
         const blob=await r.blob();
         setJob(false);currentPromptId=null;

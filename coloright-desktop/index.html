@@ -254,7 +254,7 @@ summary{cursor:pointer;font-size:13px;color:var(--sub)}
       <!-- 消除 -->
       <div class="page" id="page-erase">
         <div class="secTitle">智能消除（本地快速修复）</div>
-        <div class="hint">在照片上涂抹要去掉的东西（路人、电线、杂物），点「开始消除」。这是本地算法修复，不连 ComfyUI；大面积或复杂背景建议用 AI 页的「消除重绘」。</div>
+        <div class="hint">进入本页已自动开启涂抹（鼠标旁有笔刷圈）：在照片上按住涂抹要去掉的东西（路人、电线、杂物），点「开始消除」。这是本地算法修复，不连 ComfyUI；大面积或复杂背景建议用 AI 页的「消除重绘」。</div>
         <div id="slidersErase"></div>
         <div class="row"><button class="abtn" id="btnEraseMode">开始涂抹</button></div>
         <div class="row">
@@ -709,6 +709,7 @@ $$("#tabs .tab").forEach(t=>t.onclick=()=>{
   $$("#tabs .tab").forEach(x=>x.classList.toggle("on",x===t));
   $$("#tabBody .page").forEach(pg=>pg.classList.toggle("on",pg.id==="page-"+t.dataset.tab));
   if(t.dataset.tab==="curve")drawCurveEditor();
+  if(t.dataset.tab==="erase"&&hasImage&&!eraseOn)setEraseMode(true);
 });
 function gotoTab(name){$$("#tabs .tab").find(t=>t.dataset.tab===name).click();}
 
@@ -980,14 +981,24 @@ function maskHasContent(){
   for(let i=0;i<d.length;i+=997)if(d[i]>10)return true;
   return false;
 }
+let brushHover=null,overlayQueued=false;
+function queueOverlay(){if(overlayQueued)return;overlayQueued=true;requestAnimationFrame(()=>{overlayQueued=false;drawBrushOverlay();});}
 function drawBrushOverlay(){
   brushCv.width=glc.width;brushCv.height=glc.height;
   brushCtx.clearRect(0,0,brushCv.width,brushCv.height);
-  if(!maskCanvas.width)return;
-  const t=document.createElement("canvas");t.width=brushCv.width;t.height=brushCv.height;
-  const tx=t.getContext("2d");tx.drawImage(maskCanvas,0,0,t.width,t.height);
-  tx.globalCompositeOperation="source-in";tx.fillStyle="rgba(59,130,246,.5)";tx.fillRect(0,0,t.width,t.height);
-  brushCtx.drawImage(t,0,0);
+  if(maskCanvas.width){
+    const t=document.createElement("canvas");t.width=brushCv.width;t.height=brushCv.height;
+    const tx=t.getContext("2d");tx.drawImage(maskCanvas,0,0,t.width,t.height);
+    tx.globalCompositeOperation="source-in";tx.fillStyle="rgba(59,130,246,.5)";tx.fillRect(0,0,t.width,t.height);
+    brushCtx.drawImage(t,0,0);
+  }
+  if(eraseOn&&brushHover){
+    const dpr=brushCv.width/Math.max(1,brushCv.clientWidth);
+    brushCtx.beginPath();brushCtx.arc(brushHover.x,brushHover.y,brushSize/2*dpr,0,7);
+    brushCtx.strokeStyle="rgba(20,20,20,.55)";brushCtx.lineWidth=2.6;brushCtx.stroke();
+    brushCtx.beginPath();brushCtx.arc(brushHover.x,brushHover.y,brushSize/2*dpr,0,7);
+    brushCtx.strokeStyle="rgba(255,255,255,.95)";brushCtx.lineWidth=1.4;brushCtx.stroke();
+  }
 }
 function updateEraseBtns(){
   const has=hasImage&&maskHasContent();
@@ -1012,20 +1023,24 @@ brushCv.addEventListener("pointerdown",e=>{
   maskCtx.fillStyle="#fff";maskCtx.beginPath();maskCtx.arc(lastBP.x,lastBP.y,brushSize/2/srcCanvasScale(),0,7);maskCtx.fill();
   drawBrushOverlay();updateEraseBtns();});
 brushCv.addEventListener("pointermove",e=>{
-  if(!brushing||!eraseOn)return;const p=brushPoint(e);
+  if(eraseOn){const r=brushCv.getBoundingClientRect();brushHover={x:(e.clientX-r.left)/r.width*brushCv.width,y:(e.clientY-r.top)/r.height*brushCv.height};}
+  if(!brushing||!eraseOn){if(eraseOn)queueOverlay();return;}
+  const p=brushPoint(e);
   maskCtx.strokeStyle="#fff";maskCtx.lineCap="round";maskCtx.lineJoin="round";
   maskCtx.lineWidth=brushSize/srcCanvasScale();
   maskCtx.beginPath();maskCtx.moveTo(lastBP.x,lastBP.y);maskCtx.lineTo(p.x,p.y);maskCtx.stroke();
-  lastBP=p;drawBrushOverlay();});
+  lastBP=p;queueOverlay();});
+brushCv.addEventListener("pointerleave",()=>{brushHover=null;queueOverlay();});
 brushCv.addEventListener("pointerup",()=>{brushing=false;updateEraseBtns();});
-$("#btnEraseMode").onclick=()=>{
-  if(!hasImage){toast("先打开一张照片");return;}
-  eraseOn=!eraseOn;
-  brushCv.style.display=eraseOn?"block":"none";
-  $("#btnEraseMode").textContent=eraseOn?"结束涂抹":"开始涂抹";
-  if(eraseOn){gotoTab("erase");drawBrushOverlay();}
-};
-function exitEraseMode(){eraseOn=false;brushCv.style.display="none";$("#btnEraseMode").textContent="开始涂抹";}
+function setEraseMode(on){
+  if(on&&!hasImage){toast("先打开一张照片");return;}
+  eraseOn=on;
+  brushCv.style.display=on?"block":"none";
+  $("#btnEraseMode").textContent=on?"结束涂抹":"开始涂抹";
+  if(on)drawBrushOverlay();
+}
+$("#btnEraseMode").onclick=()=>{setEraseMode(!eraseOn);if(eraseOn)gotoTab("erase");};
+function exitEraseMode(){setEraseMode(false);}
 $("#btnEraseClear").onclick=()=>{
   maskCtx.fillStyle="#000";maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);
   drawBrushOverlay();updateEraseBtns();};

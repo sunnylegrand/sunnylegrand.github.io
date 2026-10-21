@@ -1431,10 +1431,27 @@ $("#btnMatte").onclick=async()=>{
     for(let i=0;i<sd.data.length;i+=4)sd.data[i+3]=md[i];
     sx.putImageData(sd,0,0);
   }
+  refineMatteAlpha(subject);
   pushUndo();setSource(subject,fileName);matteSubject=subject;
   $("#btnBgWhite").disabled=false;$("#btnBgTrans").disabled=false;
   toast("抠图完成：可以换白底，或去生成新背景合成");
 };
+// Matte edge cleanup: the matting model feathers ~8px OUTSIDE the silhouette, and those
+// semi-transparent pixels keep the ORIGINAL backdrop's colour — composited over a darker
+// new background they show up as a white rim. Remap alpha (kill the low tail, keep the
+// core) + 1px erosion removes the rim while keeping a 1px soft transition at the edge.
+function refineMatteAlpha(cv){
+  const w=cv.width,h=cv.height,x=cv.getContext("2d",{willReadFrequently:true});
+  const img=x.getImageData(0,0,w,h),d=img.data;
+  const lut=new Uint8Array(256);
+  for(let i=0;i<256;i++){const t=(i/255-0.22)/(0.85-0.22);lut[i]=t<=0?0:t>=1?255:Math.round(t*255);}
+  const a=new Uint8Array(w*h),tmp=new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++)a[i]=lut[d[i*4+3]];
+  for(let yy=0;yy<h;yy++){const o=yy*w;for(let xx=0;xx<w;xx++){let m=a[o+xx];if(xx>0)m=Math.min(m,a[o+xx-1]);if(xx<w-1)m=Math.min(m,a[o+xx+1]);tmp[o+xx]=m;}}
+  for(let yy=0;yy<h;yy++){const o=yy*w;for(let xx=0;xx<w;xx++){let m=tmp[o+xx];if(yy>0)m=Math.min(m,tmp[o-w+xx]);if(yy<h-1)m=Math.min(m,tmp[o+w+xx]);a[o+xx]=m;}}
+  for(let i=0;i<w*h;i++)d[i*4+3]=a[i];
+  x.putImageData(img,0,0);
+}
 $("#btnBgWhite").onclick=()=>{
   if(!matteSubject)return;pushUndo();
   const c=document.createElement("canvas");c.width=matteSubject.width;c.height=matteSubject.height;

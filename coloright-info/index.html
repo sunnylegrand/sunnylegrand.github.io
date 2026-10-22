@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0c0c0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ColoRight 说明">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>ColoRight · 详细说明</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0c0c0d; color: #f2f2f3; min-height: 100vh;
+    padding: calc(24px + env(safe-area-inset-top)) 20px 48px;
+    line-height: 1.65;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  .back { font-size: 14px; color: #6ea8fe; text-decoration: none; }
+  header { margin: 18px 0 8px; display: flex; align-items: center; gap: 16px; }
+  .icon {
+    flex: 0 0 auto; width: 62px; height: 62px; border-radius: 15px;
+    background: linear-gradient(135deg, #f59e0b, #ef4444 55%, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; font-weight: 700; color: #fff;
+  }
+  h1 { font-size: 27px; font-weight: 700; letter-spacing: .5px; }
+  .tagline { font-size: 14px; color: #9a9aa0; margin-top: 2px; }
+  h2 { font-size: 19px; font-weight: 700; margin: 30px 0 10px; }
+  h3 { font-size: 16px; font-weight: 600; margin: 20px 0 6px; }
+  p, li { font-size: 14.5px; color: #d7d7da; }
+  .muted { color: #9a9aa0; font-size: 13.5px; }
+  ul { padding-left: 20px; }
+  li { margin: 3px 0; }
+  .card {
+    background: #17181a; border: 1px solid #26272b; border-radius: 16px;
+    padding: 16px 18px; margin-top: 12px;
+  }
+  .btn {
+    display: inline-block; margin: 10px 10px 2px 0; padding: 10px 18px;
+    border-radius: 12px; font-size: 14.5px; font-weight: 600; text-decoration: none;
+    background: #2f6fed; color: #fff;
+  }
+  .btn.ghost { background: #232428; color: #d7d7da; border: 1px solid #33343a; }
+  .model { border-left: 3px solid #f59e0b; }
+  .model .fname { font-size: 13.5px; color: #9a9aa0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.8px;
+    background: #232428; border-radius: 5px; padding: 1px 5px; color: #ffd9a0;
+    word-break: break-all;
+  }
+  a { color: #6ea8fe; }
+  .dl { font-weight: 600; }
+  footer { margin-top: 40px; font-size: 12px; color: #5c5d63; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="../">← 应用索引</a>
+    <header>
+      <div class="icon">C</div>
+      <div>
+        <h1>ColoRight</h1>
+        <p class="tagline">修图工具 · 手机网页版 + 电脑桌面版（本地 AI）</p>
+      </div>
+    </header>
+
+    <p>ColoRight 有两个版本：<b>手机版</b>是打开即用的网页修图工具；<b>桌面版</b>在电脑本地运行，除完整修图功能外，还能调用本机 ComfyUI 的本地大模型做 AI 抠图、生成背景、消除重绘、美化和放大，照片不出本机。</p>
+
+    <h2>手机版（网页版）</h2>
+    <div class="card">
+      <ul>
+        <li>基础调整：曝光、对比度、饱和度、色温等滑杆 + 曲线（含 RGB 分通道）</li>
+        <li>HSL 分色调整、滤镜预设、裁剪旋转、直方图</li>
+        <li>智能消除：涂抹擦除杂物</li>
+        <li>横屏自动分栏布局，按原图分辨率导出</li>
+      </ul>
+      <p class="muted" style="margin-top:8px">手机版为轻量网页版，<b>不包含桌面版的本地大模型 AI 功能</b>，无需安装，打开即用。</p>
+      <a class="btn" href="../coloright/">打开手机版</a>
+      <a class="btn ghost" href="https://github.com/sunnylegrand/sunnylegrand.github.io/tree/main/coloright">查看源代码</a>
+    </div>
+
+    <h2>桌面版（电脑本地）</h2>
+    <div class="card">
+      <p><b>功能</b>：与手机版相同的修图编辑器（曲线/HSL/裁剪/消除等），外加五项本地 AI——</p>
+      <ul>
+        <li><b>AI 抠图</b>：一键去背景，真透明通道，可换透明/纯色/新背景</li>
+        <li><b>AI 生成背景</b>：输入文字描述生成新背景并合成</li>
+        <li><b>AI 消除重绘</b>：涂抹选区，按周围画面智能补全</li>
+        <li><b>AI 美化</b>：一句话指令整体修图（如“更通透”“暖色调”）</li>
+        <li><b>AI 放大</b>：4 倍超分后输出 2 倍成品，细节更清晰</li>
+      </ul>
+      <p style="margin-top:8px"><b>运行要求</b>：Windows / macOS / Linux 电脑；已安装 <a href="https://github.com/Comfy-Org/ComfyUI">ComfyUI</a> 并保持运行；建议 NVIDIA 显卡（显存 12GB 以上体验更佳）；首次使用需按下方清单下载模型。</p>
+      <p style="margin-top:6px"><b>使用方式</b>：下载代码包 → 解压取出 <code>coloright-desktop</code> 文件夹 → 保持 ComfyUI 开着 → 双击 <code>start-windows.bat</code>（Mac/Linux 运行 <code>start-mac-linux.sh</code>）→ 浏览器自动打开编辑器。</p>
+      <a class="btn" href="https://github.com/sunnylegrand/sunnylegrand.github.io/archive/refs/heads/main.zip">打包下载全部代码（ZIP）</a>
+      <a class="btn ghost" href="https://github.com/sunnylegrand/sunnylegrand.github.io/tree/main/coloright-desktop">浏览桌面版文件</a>
+      <p class="muted" style="margin-top:8px">ZIP 为本站全部代码打包，解压后 <code>coloright-desktop/</code> 即桌面版，<code>coloright/</code> 为手机版源码。</p>
+    </div>
+
+    <h2>桌面版 · 本地 AI 模型清单与下载</h2>
+    <p class="muted">桌面版的 AI 功能由本机 ComfyUI 驱动，需自行下载以下开源模型并按路径放入 ComfyUI 目录。模型版权与许可证归各自发布方。</p>
+
+    <div class="card model">
+      <h3>0 · 基础：ComfyUI 本体</h3>
+      <p>所有 AI 功能的运行引擎，先装它并能正常启动。</p>
+      <p><a class="dl" href="https://github.com/Comfy-Org/ComfyUI">下载 ComfyUI（GitHub）→</a></p>
+    </div>
+
+    <div class="card model">
+      <h3>1 · AI 抠图 — BRIA RMBG-1.4</h3>
+      <p>经 ComfyUI_LayerStyle 节点的 RmBgUltra V2 调用，输出真透明通道。</p>
+      <p class="fname">节点：<code>ComfyUI_LayerStyle</code> → <a href="https://github.com/chflame/ComfyUI_LayerStyle">GitHub 下载</a><br>
+      权重文件 <code>model.pth</code> 放入 <code>ComfyUI/custom_nodes/ComfyUI_LayerStyle/RMBG-1.4/</code></p>
+      <p><a class="dl" href="https://huggingface.co/briaai/RMBG-1.4">下载 RMBG-1.4（Hugging Face）→</a></p>
+    </div>
+
+    <div class="card model">
+      <h3>2 · AI 生成背景 — Z-Image Turbo</h3>
+      <p>文生图生成新背景（桌面版默认优先选用 Turbo 版，约十几秒出图）。</p>
+      <p class="fname"><code>z_image_turbo_bf16.safetensors</code> → <code>models/diffusion_models/</code><br>
+      <code>qwen_3_4b.safetensors</code> → <code>models/text_encoders/</code><br>
+      <code>ae.safetensors</code> → <code>models/vae/</code></p>
+      <p><a class="dl" href="https://huggingface.co/Comfy-Org/z_image_turbo">下载 Z-Image Turbo（Hugging Face · Comfy-Org）→</a></p>
+    </div>
+
+    <div class="card model">
+      <h3>3 · AI 消除重绘 — FLUX.2 Klein 4B</h3>
+      <p>涂抹选区的内容补全重绘，速度快、适合修图级消除。</p>
+      <p class="fname"><code>flux-2-klein-4b.safetensors</code> → <code>models/diffusion_models/</code><br>
+      <code>qwen_3_4b.safetensors</code> → <code>models/text_encoders/</code>（与 Z-Image 共用同一个文件）<br>
+      <code>flux2-vae.safetensors</code> → <code>models/vae/</code>（在下方 flux2-dev 仓库的 split_files/vae 里）</p>
+      <p><a class="dl" href="https://huggingface.co/Comfy-Org/flux2-klein-4B">下载 FLUX.2 Klein 4B（Hugging Face · Comfy-Org）→</a>
+      &nbsp;·&nbsp;<a class="dl" href="https://huggingface.co/Comfy-Org/flux2-dev">flux2-vae 下载 →</a></p>
+    </div>
+
+    <div class="card model">
+      <h3>4 · AI 美化 — Qwen Image Edit 2511</h3>
+      <p>指令式整体编辑：理解一句话要求并改图（桌面版用 bf16 全精度版，显存紧张可换同仓库的 fp8mixed 版）。</p>
+      <p class="fname"><code>qwen_image_edit_2511_bf16.safetensors</code> → <code>models/diffusion_models/</code><br>
+      <code>qwen_2.5_vl_7b_fp8_scaled.safetensors</code> → <code>models/text_encoders/</code><br>
+      <code>qwen_image_vae.safetensors</code> → <code>models/vae/</code></p>
+      <p><a class="dl" href="https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI">下载 Qwen Image Edit 2511（Hugging Face · Comfy-Org 适配版）→</a>
+      &nbsp;·&nbsp;<a class="dl" href="https://huggingface.co/Qwen/Qwen-Image-Edit-2511">原版仓库 →</a></p>
+    </div>
+
+    <div class="card model">
+      <h3>5 · AI 放大 — RealESRGAN x4plus</h3>
+      <p>经典超分模型，放大 4 倍后缩回 2 倍交付，去噪与细节恢复兼顾。</p>
+      <p class="fname"><code>RealESRGAN_x4plus.pth</code> → <code>models/upscale_models/</code></p>
+      <p><a class="dl" href="https://github.com/xinntao/Real-ESRGAN/releases">下载 RealESRGAN（GitHub Releases）→</a></p>
+    </div>
+
+    <p class="muted" style="margin-top:14px">提示：模型文件较大（单个可达数 GB 至 40GB），请预留足够磁盘与显存；放好文件后重启 ComfyUI，桌面版顶部连接状态会显示可用的 AI 功能。</p>
+
+    <footer>ColoRight · 托管于 GitHub Pages</footer>
+  </div>
+</body>
+</html>

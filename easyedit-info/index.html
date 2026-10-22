@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0c0c0d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="EasyEdit 说明">
+<meta name="apple-mobile-web-app-title" content="EasyEdit">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<title>EasyEdit · 详细说明</title>
+<title>EasyEdit · Details &amp; Downloads</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -54,41 +54,41 @@
 </head>
 <body>
   <div class="wrap">
-    <a class="back" href="../">← 应用索引</a>
+    <a class="back" href="../">← App Index</a>
     <header>
       <div class="icon">E</div>
       <div>
         <h1>EasyEdit</h1>
-        <p class="tagline">手机视频剪辑 · 网页版，打开即用</p>
+        <p class="tagline">Mobile video editor · Web app — open it and start cutting</p>
       </div>
     </header>
 
-    <p>EasyEdit 是一个在手机浏览器里运行的视频剪辑工具：导入多个视频素材，在时间线上裁剪、分割、排序，加上变速、滤镜、画幅、贴纸和文字，最后导出成片。所有处理都在本机浏览器内完成（FFmpeg.wasm），<b>视频不上传任何服务器</b>。</p>
+    <p>EasyEdit is a video editor that runs in your phone's browser: import multiple clips, trim, split and reorder them on a timeline, add speed changes, filters, aspect ratios, stickers and text, then export the finished video. Everything is processed locally in the browser (FFmpeg.wasm) — <b>your videos are never uploaded to any server</b>.</p>
 
-    <h2>主要功能</h2>
+    <h2>Features</h2>
     <div class="card">
       <ul>
-        <li><b>多素材导入</b>：多个视频片段拼接到同一条时间线</li>
-        <li><b>时间线编辑</b>：裁剪入点/出点、在播放头处分割、拖动排序、删除片段</li>
-        <li><b>变速</b>：8 档速度调节；<b>倒放</b>（导出后生效）</li>
-        <li><b>画面</b>：7 种滤镜、6 种画幅（16:9 / 9:16 / 1:1 等）、90° 旋转、变焦推拉、黑/白/模糊边框填充</li>
-        <li><b>音频</b>：音量调节、原声增强；<b>从视频提取音频导出 MP3</b>，也可导入音频作 BGM</li>
-        <li><b>贴纸与文字</b>：叠加到画面指定位置</li>
-        <li><b>导出</b>：本机渲染导出 MP4 成片</li>
-        <li>桌面浏览器同样可用：鼠标点选、拖播放头/边缘/排序，附剪辑快捷键</li>
+        <li><b>Multi-clip import</b>: stitch several videos onto one timeline</li>
+        <li><b>Timeline editing</b>: trim in/out points, split at the playhead, drag to reorder, delete clips</li>
+        <li><b>Speed</b>: 8 speed levels; <b>reverse playback</b> (applied on export)</li>
+        <li><b>Picture</b>: 7 filters, 6 aspect ratios (16:9 / 9:16 / 1:1 …), 90° rotation, zoom push/pull, black / white / blurred border fill</li>
+        <li><b>Audio</b>: volume control and voice enhancement; <b>extract audio from any clip and save it as MP3</b>, or import audio as BGM</li>
+        <li><b>Stickers &amp; text</b>: overlay them anywhere on the frame</li>
+        <li><b>Export</b>: renders the final MP4 locally on your device</li>
+        <li>Works on desktop browsers too: mouse selection, playhead/edge dragging, clip reordering and editing shortcuts</li>
       </ul>
-      <a class="btn" href="../easyedit/">打开 EasyEdit</a>
+      <a class="btn" href="../easyedit/">Open EasyEdit</a>
     </div>
 
-    <h2>代码下载</h2>
+    <h2>Code Download</h2>
     <div class="card">
-      <p>EasyEdit 是单文件网页应用（一个 <code>index.html</code> 即全部代码），可自行保存、离线部署或二次开发。</p>
-      <a class="btn" href="https://github.com/sunnylegrand/sunnylegrand.github.io/archive/refs/heads/main.zip">打包下载全部代码（ZIP）</a>
-      <a class="btn ghost" href="https://github.com/sunnylegrand/sunnylegrand.github.io/tree/main/easyedit">浏览 EasyEdit 代码</a>
-      <p class="muted" style="margin-top:8px">ZIP 为本站全部代码打包，解压后 <code>easyedit/</code> 即 EasyEdit 源码。注：导出功能依赖的 FFmpeg.wasm 引擎在首次使用时从 CDN 加载，需要联网一次。</p>
+      <p>EasyEdit is a single-file web app — one <code>index.html</code> is the entire codebase. Save it, self-host it, or build on it.</p>
+      <a class="btn" href="https://github.com/sunnylegrand/sunnylegrand.github.io/archive/refs/heads/main.zip">Download All Code (ZIP)</a>
+      <a class="btn ghost" href="https://github.com/sunnylegrand/sunnylegrand.github.io/tree/main/easyedit">Browse EasyEdit Code</a>
+      <p class="muted" style="margin-top:8px">The ZIP contains this whole site's code; <code>easyedit/</code> inside it is EasyEdit's source. Note: the FFmpeg.wasm engine used for export loads from a CDN on first use, so you'll need an internet connection once.</p>
     </div>
 
-    <footer>EasyEdit · 托管于 GitHub Pages</footer>
+    <footer>EasyEdit · Hosted on GitHub Pages</footer>
   </div>
 </body>
 </html>

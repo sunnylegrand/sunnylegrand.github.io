@@ -82,6 +82,22 @@
         font-size:11px; padding:3px 8px; border-radius:20px;
       }
       .ov-layer{ position:absolute; inset:0; z-index:5; }
+      /* 字幕显示层：底部居中，经典字幕样式 */
+      .sub-display{ position:absolute; left:0; right:0; bottom:4%; z-index:6;
+        display:none; text-align:center; pointer-events:none; padding:0 4%; }
+      .sub-display span{ display:inline-block; max-width:100%; font-weight:700; color:#fff;
+        background:rgba(0,0,0,.55); border-radius:8px; padding:.22em .6em;
+        text-shadow:0 1px 3px rgba(0,0,0,.85); line-height:1.4; word-break:break-all; white-space:pre-line; }
+      .sub-display.nobg span{ background:transparent; }
+      /* 字幕列表项 */
+      .sub-list-item{ display:flex; align-items:center; gap:8px; padding:9px 4px;
+        border-bottom:1px solid var(--line); cursor:pointer; }
+      .sub-list-item .grow{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+        white-space:nowrap; font-size:13px; }
+      .sub-list-item .tm{ color:var(--dim); font-size:12px; white-space:nowrap; }
+      .sub-list-item.on{ background:var(--panel3); border-radius:8px; }
+      .sub-list-item button{ flex:none; background:none; border:none; color:#ff6b61;
+        font-size:13px; padding:4px 6px; }
       .ov-item{ position:absolute; transform:translate(-50%,-50%); cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
       .ov-item.sel{ outline:1.5px dashed rgba(255,255,255,.85); outline-offset:3px; border-radius:4px; }
       .ov-item img{ display:block; pointer-events:none; }
@@ -412,6 +428,7 @@
             </div>
             <div class="vignette-fx" id="vignetteFx"></div>
             <div class="ov-layer" id="ovLayer"></div>
+            <div class="sub-display" id="subDisplay"><span id="subSpan"></span></div>
             <div class="rev-tag" id="revTag">倒放 · 导出后生效</div>
           </div>
           <div class="preview-empty" id="previewEmpty">
@@ -511,6 +528,8 @@
               <div class="toolpanel" id="toolPanel"></div>
             </div>
             <div id="ovEdit"></div>
+            <div id="subEdit"></div>
+            <input type="file" id="srtInput" accept=".srt,.vtt,text/plain" style="display:none">
           </section>
 
           <!-- 分段 -->
@@ -673,10 +692,13 @@
       clips: [],        // {id,mediaId,inn,out,volume,muted,rot,speed,filter,cropRatio,cropPos,zoom,reverse,enhance}
       audios: [],       // {id,name,blob,url,duration,fromName}
       bgm: null,        // {audioId, mode:'mix'|'replace', volume:0..1}
-      project: { aspect:"orig", border:"none", enhanceAll:false },
+      project: { aspect:"orig", border:"none", enhanceAll:false,
+        subtitle:{ size:0.05, color:"#ffffff", bg:true } },
       overlays: [],     // {id,kind:'sticker'|'text',emoji,imgBlob,imgUrl,text,color,size,x,y,start,end}
+      subtitles: [],    // {id,text,start,end} —— 底部居中字幕，样式走 project.subtitle
       selectedClipId: null,
       selectedOverlayId: null,
+      selectedSubtitleId: null,
       activeTool: null,
       activeTab: "clip",
       sortMode: false,
@@ -689,6 +711,7 @@
     function clipById(id){ for (var i=0;i<state.clips.length;i++) if (state.clips[i].id===id) return state.clips[i]; return null; }
     function audioById(id){ for (var i=0;i<state.audios.length;i++) if (state.audios[i].id===id) return state.audios[i]; return null; }
     function overlayById(id){ for (var i=0;i<state.overlays.length;i++) if (state.overlays[i].id===id) return state.overlays[i]; return null; }
+    function subtitleById(id){ for (var i=0;i<state.subtitles.length;i++) if (state.subtitles[i].id===id) return state.subtitles[i]; return null; }
     /* ★ 有效时长口径：时间线上一律 (out-inn)/speed，分割/入出点/总时长/导出共用 */
     function srcDur(c){ return Math.max(0, c.out - c.inn); }
     function clipDur(c){ return srcDur(c) / (c.speed || 1); }
@@ -1761,6 +1784,26 @@
         var vis = state.playhead >= ov.start - 0.001 && state.playhead <= ov.end + 0.001;
         els[i].style.display = vis ? "block" : "none";
       }
+      renderSubDisplay();
+    }
+    /* 字幕预览：播放头落在某条字幕时间窗内即显示（底部居中经典样式） */
+    function renderSubDisplay(){
+      var box = $("subDisplay"), sp = $("subSpan");
+      if (!box || !sp) return;
+      var st = state.project.subtitle || {};
+      var cur = null;
+      for (var i=0;i<state.subtitles.length;i++){
+        var s = state.subtitles[i];
+        if (s.end > s.start && state.playhead >= s.start - 0.001 && state.playhead <= s.end + 0.001){ cur = s; break; }
+      }
+      if (!cur){ box.style.display = "none"; return; }
+      var fb = $("frameBox");
+      var px = Math.max(11, Math.round((fb ? fb.clientHeight : 180) * (st.size || 0.05)));
+      sp.style.fontSize = px + "px";
+      sp.style.color = st.color || "#ffffff";
+      sp.textContent = cur.text;
+      box.className = "sub-display" + (st.bg === false ? " nobg" : "");
+      box.style.display = "block";
     }
     function attachOvDrag(el, ov){
       var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0, moved = false;
@@ -1807,6 +1850,53 @@
         else res(null);
       });
     }
+    /* 字幕 → 透明 PNG（按字符自动换行，系统字体，中文没问题；黑底药丸与预览一致） */
+    function subtitlePngBlob(sub, W, H){
+      return new Promise(function(res){
+        var st = state.project.subtitle || {};
+        var px = Math.max(14, Math.round((st.size || 0.05) * H));
+        var maxW = Math.round(W * 0.92);
+        var cv = document.createElement("canvas");
+        var cx = cv.getContext("2d");
+        var font = "700 " + px + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC","Segoe UI",sans-serif';
+        cx.font = font;
+        var lines = [];
+        sub.text.split("\n").forEach(function(par){
+          var cur = "";
+          for (var i = 0; i < par.length; i++){
+            var ch = par[i];
+            if (cur.length && cx.measureText(cur + ch).width > maxW){ lines.push(cur); cur = ch; }
+            else cur += ch;
+          }
+          lines.push(cur);
+        });
+        var lineH = Math.round(px * 1.4);
+        var padX = Math.round(px * 0.6), padY = Math.round(px * 0.32);
+        var tw = 0;
+        lines.forEach(function(l){ tw = Math.max(tw, cx.measureText(l).width); });
+        cv.width = Math.max(2, Math.ceil(tw) + padX * 2);
+        cv.height = Math.max(2, lineH * lines.length + padY * 2);
+        cx = cv.getContext("2d");
+        cx.font = font; cx.textAlign = "center"; cx.textBaseline = "top";
+        if (st.bg !== false){
+          cx.fillStyle = "rgba(0,0,0,0.55)";
+          var r = Math.min(10, padY + 2), bw = cv.width, bh = cv.height;
+          cx.beginPath();
+          cx.moveTo(r, 0);
+          cx.arcTo(bw, 0, bw, bh, r); cx.arcTo(bw, bh, 0, bh, r);
+          cx.arcTo(0, bh, 0, 0, r); cx.arcTo(0, 0, bw, 0, r);
+          cx.closePath(); cx.fill();
+        } else {
+          cx.shadowColor = "rgba(0,0,0,.85)"; cx.shadowBlur = Math.max(2, px * 0.1);
+        }
+        cx.fillStyle = st.color || "#ffffff";
+        for (var li = 0; li < lines.length; li++){
+          cx.fillText(lines[li], cv.width / 2, padY + li * lineH);
+        }
+        if (cv.toBlob) cv.toBlob(function(b){ res(b); }, "image/png");
+        else res(null);
+      });
+    }
     async function addSticker(emoji){
       var blob = await emojiPngBlob(emoji);
       if (!blob){ toast("当前浏览器无法生成贴纸图"); return; }
@@ -1839,6 +1929,10 @@
     $("stickerInput").addEventListener("change", function(){
       var f = (this.files || [])[0]; this.value = "";
       if (f) addStickerImage(f);
+    });
+    $("srtInput").addEventListener("change", function(){
+      var f = (this.files || [])[0]; this.value = "";
+      if (f) importSrtFile(f);
     });
     </script>
 
@@ -2010,6 +2104,7 @@
       enh:   '<svg class="ic" viewBox="0 0 24 24"><path d="M4 10.5v3M8 7.5v9M12 5v14M16 8.5v7M20 10.5v3"/></svg>',
       sticker:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="9" cy="10" r=".4"/><circle cx="15" cy="10" r=".4"/><path d="M8.5 14.5a5 5 0 0 0 7 0"/></svg>',
       text:  '<svg class="ic" viewBox="0 0 24 24"><path d="M5 5.5V4h14v1.5M12 4v16M9.5 20h5"/></svg>',
+      subtitle:'<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9.5h10M7 13h10M7 16.5h6"/></svg>',
       replace:'<svg class="ic" viewBox="0 0 24 24"><path d="M4 8.5A8 8 0 0 1 19.6 6M20 15.5A8 8 0 0 1 4.4 18"/><path d="M20 3.5v4h-4M4 20.5v-4h4"/></svg>'
     };
     var CLIP_TOOLS = [
@@ -2027,6 +2122,7 @@
       { id:"rot", label:"旋转", panel:true },
       { id:"sticker", label:"贴纸", panel:true, noClip:true },
       { id:"text", label:"文字", panel:true, noClip:true },
+      { id:"subtitle", label:"字幕", panel:true, noClip:true },
       { id:"del", label:"删除" }
     ];
     var SEG_TOOLS = [
@@ -2120,7 +2216,7 @@
       p.innerHTML = "";
       var t = state.activeTool;
       var c = selClip();
-      if (!t || (!c && t !== "sticker" && t !== "text")){ p.classList.remove("on"); return; }
+      if (!t || (!c && t !== "sticker" && t !== "text" && t !== "subtitle")){ p.classList.remove("on"); return; }
       p.classList.add("on");
       if (t === "trim" && c){
         var row = document.createElement("div"); row.className = "btn-row";
@@ -2272,6 +2368,66 @@
         ab.appendChild(add); p.appendChild(ab);
         p.appendChild(ovList("text"));
         p.appendChild(panelNote("文字导出时用系统字体渲染成透明 PNG 再叠加（不走 drawtext，中文没问题）。可加多条，每条独立时间窗。"));
+      } else if (t === "subtitle"){
+        var st = state.project.subtitle;
+        var ta = document.createElement("textarea");
+        ta.id = "subTextInput"; ta.placeholder = "输入字幕内容（支持中文，可换行分行）";
+        ta.rows = 2;
+        ta.style.cssText = "width:100%;background:var(--panel3);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px 11px;font-size:14px;outline:none;resize:vertical";
+        p.appendChild(ta);
+        var ab = document.createElement("div"); ab.className = "btn-row"; ab.style.marginTop = "10px";
+        var add = document.createElement("button"); add.className = "btn blue"; add.textContent = "＋ 添加字幕";
+        add.addEventListener("click", function(){
+          var txt = ta.value.trim();
+          if (!txt){ toast("先输入字幕内容"); ta.focus(); return; }
+          addSubtitle(txt);
+          ta.value = "";
+        });
+        ab.appendChild(add); p.appendChild(ab);
+        /* 样式：字号 / 颜色 / 黑底 */
+        var sf = document.createElement("div"); sf.className = "field"; sf.style.marginTop = "12px"; sf.style.marginBottom = "6px";
+        var sfl = document.createElement("div"); sfl.className = "flabel";
+        sfl.innerHTML = "<span>字号（相对画面高度）</span><b>" + Math.round(st.size * 100) + "%</b>";
+        var srg = document.createElement("input");
+        srg.type = "range"; srg.min = 3; srg.max = 10; srg.value = Math.round(st.size * 100);
+        srg.addEventListener("input", function(){
+          st.size = parseInt(this.value, 10) / 100;
+          sfl.querySelector("b").textContent = this.value + "%";
+          renderSubDisplay();
+        });
+        sf.appendChild(sfl); sf.appendChild(srg);
+        p.appendChild(sf);
+        var sw = document.createElement("div"); sw.className = "swatches"; sw.style.marginTop = "4px";
+        ["#ffffff","#ffd93b","#ff5147","#2f7cf6","#35c26e","#111111"].forEach(function(col, i){
+          var b = document.createElement("button");
+          b.style.background = col; if (col === st.color) b.className = "on";
+          b.addEventListener("click", function(){
+            st.color = col;
+            sw.querySelectorAll("button").forEach(function(x){ x.classList.remove("on"); });
+            b.classList.add("on");
+            renderSubDisplay();
+          });
+          sw.appendChild(b);
+        });
+        p.appendChild(sw);
+        var bgRow = document.createElement("div"); bgRow.className = "btn-row"; bgRow.style.marginTop = "10px";
+        var bgT = document.createElement("button"); bgT.className = "btn" + (st.bg !== false ? " blue" : "");
+        bgT.textContent = st.bg !== false ? "黑底：开" : "黑底：关";
+        bgT.addEventListener("click", function(){
+          st.bg = !(st.bg !== false);
+          bgT.textContent = st.bg ? "黑底：开" : "黑底：关";
+          bgT.className = "btn" + (st.bg ? " blue" : "");
+          renderSubDisplay();
+        });
+        bgRow.appendChild(bgT); p.appendChild(bgRow);
+        p.appendChild(subList());
+        var srtRow = document.createElement("div"); srtRow.className = "btn-row"; srtRow.style.marginTop = "10px";
+        var impB = document.createElement("button"); impB.className = "btn"; impB.textContent = "导入 SRT";
+        impB.addEventListener("click", function(){ $("srtInput").click(); });
+        var expB = document.createElement("button"); expB.className = "btn"; expB.textContent = "导出 SRT";
+        expB.addEventListener("click", exportSrt);
+        srtRow.appendChild(impB); srtRow.appendChild(expB); p.appendChild(srtRow);
+        p.appendChild(panelNote("字幕固定底部居中显示，导出时烧录进画面（系统字体渲染，中文没问题）。点列表可选中改时间，SRT 可导入/导出。"));
       }
     }
     function ovList(kind){
@@ -2350,6 +2506,148 @@
       panel.appendChild(br);
       panel.appendChild(panelNote("在预览画面上按住即可拖动位置；时间窗与时间线同一口径，导出时只在该窗内显示。"));
       box.appendChild(panel);
+    }
+    /* ================= 字幕：添加 / 列表 / 选中编辑 / SRT ================= */
+    function addSubtitle(text){
+      var tot = totalDur();
+      var s = Math.min(state.playhead, Math.max(0, tot - 0.3));
+      var e = tot > 0 ? Math.min(s + 2, tot) : s + 2;
+      if (e - s < 0.3) e = s + 0.3;
+      var sub = { id:uid(), text:text, start:Math.round(s * 10) / 10, end:Math.round(e * 10) / 10 };
+      state.subtitles.push(sub);
+      state.subtitles.sort(function(a, b){ return a.start - b.start; });
+      state.selectedSubtitleId = sub.id;
+      renderSubDisplay(); renderSubEdit(); renderToolPanel();
+      toast("字幕已添加，默认从播放位置开始显示 2 秒，可在列表里改时间");
+    }
+    function subList(){
+      var wrap = document.createElement("div");
+      state.subtitles.slice().sort(function(a, b){ return a.start - b.start; }).forEach(function(sub){
+        var it = document.createElement("div");
+        it.className = "sub-list-item" + (sub.id === state.selectedSubtitleId ? " on" : "");
+        var g = document.createElement("span"); g.className = "grow"; g.textContent = sub.text.split("\n")[0];
+        var tm = document.createElement("span"); tm.className = "tm"; tm.textContent = fmt(sub.start) + "–" + fmt(sub.end);
+        var del = document.createElement("button"); del.textContent = "删除";
+        del.addEventListener("click", function(e){
+          e.stopPropagation();
+          state.subtitles = state.subtitles.filter(function(x){ return x.id !== sub.id; });
+          if (state.selectedSubtitleId === sub.id) state.selectedSubtitleId = null;
+          renderSubDisplay(); renderSubEdit(); renderToolPanel();
+        });
+        it.appendChild(g); it.appendChild(tm); it.appendChild(del);
+        it.addEventListener("click", function(){
+          state.selectedSubtitleId = sub.id;
+          setPlayhead(Math.min(sub.start, totalDur()));
+          renderSubDisplay(); renderSubEdit(); renderToolPanel();
+        });
+        wrap.appendChild(it);
+      });
+      if (!state.subtitles.length){
+        var emp = document.createElement("p"); emp.className = "hint"; emp.textContent = "还没有字幕，在上方输入后添加。";
+        wrap.appendChild(emp);
+      }
+      return wrap;
+    }
+    function renderSubEdit(){
+      var box = $("subEdit");
+      box.innerHTML = "";
+      var sub = subtitleById(state.selectedSubtitleId);
+      if (!sub) return;
+      var panel = document.createElement("div");
+      panel.className = "toolpanel on";
+      var title = document.createElement("div");
+      title.className = "clip-info";
+      title.innerHTML = '<span class="nm">字幕设置</span><span class="rg">' + fmt(sub.start) + "–" + fmt(sub.end) + "</span>";
+      panel.appendChild(title);
+      var ta = document.createElement("textarea");
+      ta.rows = 2; ta.value = sub.text;
+      ta.style.cssText = "width:100%;background:var(--panel3);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px 11px;font-size:14px;outline:none;resize:vertical;margin-bottom:9px";
+      ta.addEventListener("input", function(){ sub.text = ta.value; renderSubDisplay(); renderToolPanel(); });
+      panel.appendChild(ta);
+      var tot = Math.max(totalDur(), sub.end, 1);
+      function slider(label, val, min, max, step, onInput){
+        var f = document.createElement("div"); f.className = "field"; f.style.marginBottom = "9px";
+        var fl = document.createElement("div"); fl.className = "flabel";
+        fl.innerHTML = "<span>" + label + "</span><b>" + fmt(val) + "</b>";
+        var rg = document.createElement("input");
+        rg.type = "range"; rg.min = min; rg.max = max; rg.step = step; rg.value = val;
+        rg.addEventListener("input", function(){
+          onInput(parseFloat(this.value));
+          fl.querySelector("b").textContent = fmt(parseFloat(this.value));
+        });
+        rg.addEventListener("change", function(){ renderToolPanel(); });
+        f.appendChild(fl); f.appendChild(rg);
+        panel.appendChild(f);
+      }
+      slider("开始时间", Math.round(sub.start * 10) / 10, 0, Math.round(tot * 10) / 10, 0.1,
+        function(v){ sub.start = Math.min(v, sub.end - 0.1); renderSubDisplay(); });
+      slider("结束时间", Math.round(sub.end * 10) / 10, 0, Math.round(tot * 10) / 10, 0.1,
+        function(v){ sub.end = Math.max(v, sub.start + 0.1); renderSubDisplay(); });
+      var br = document.createElement("div"); br.className = "btn-row";
+      var del = document.createElement("button"); del.className = "btn danger"; del.textContent = "删除这条字幕";
+      del.addEventListener("click", function(){
+        state.subtitles = state.subtitles.filter(function(x){ return x.id !== sub.id; });
+        state.selectedSubtitleId = null;
+        renderSubDisplay(); renderSubEdit(); renderToolPanel();
+      });
+      var done = document.createElement("button"); done.className = "btn"; done.textContent = "完成";
+      done.addEventListener("click", function(){
+        state.selectedSubtitleId = null;
+        renderSubEdit(); renderToolPanel();
+      });
+      br.appendChild(del); br.appendChild(done);
+      panel.appendChild(br);
+      box.appendChild(panel);
+    }
+    function srtTime(t){
+      t = Math.max(0, t);
+      var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = Math.floor(t % 60), ms = Math.floor(t % 1 * 1000);
+      function p2(n){ return (n < 10 ? "0" : "") + n; }
+      function p3(n){ return (n < 10 ? "00" : n < 100 ? "0" : "") + n; }
+      return p2(h) + ":" + p2(m) + ":" + p2(s) + "," + p3(ms);
+    }
+    function parseSrtTime(str){
+      var m = str.trim().match(/(\d+):(\d+):(\d+)[,.](\d+)/);
+      if (!m) return null;
+      return parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10) + parseInt(m[4], 10) / 1000;
+    }
+    function exportSrt(){
+      var subs = state.subtitles.slice().sort(function(a, b){ return a.start - b.start; })
+        .filter(function(s){ return s.end > s.start && s.text.trim(); });
+      if (!subs.length){ toast("还没有字幕可导出"); return; }
+      var out = subs.map(function(s, i){
+        return (i + 1) + "\n" + srtTime(s.start) + " --> " + srtTime(s.end) + "\n" + s.text.trim() + "\n";
+      }).join("\n");
+      downloadBlob(new Blob(["\ufeff" + out], { type: "text/plain;charset=utf-8" }), "EasyEdit字幕.srt");
+      toast("SRT 字幕已开始下载");
+    }
+    function importSrtFile(file){
+      var rd = new FileReader();
+      rd.onload = function(){
+        var txt = String(rd.result || "").replace(/^\ufeff/, "").replace(/\r\n?/g, "\n");
+        var blocks = txt.split(/\n\s*\n/);
+        var added = 0;
+        blocks.forEach(function(b){
+          var lines = b.split("\n").filter(function(l){ return l.trim().length; });
+          if (lines.length < 2) return;
+          var ti = lines[0].match(/^\d+$/) ? 1 : 0;
+          if (ti >= lines.length) return;
+          var parts = lines[ti].split("-->");
+          if (parts.length !== 2) return;
+          var st = parseSrtTime(parts[0]), en = parseSrtTime(parts[1]);
+          if (st === null || en === null || en <= st) return;
+          var tx = lines.slice(ti + 1).join("\n").trim();
+          if (!tx) return;
+          state.subtitles.push({ id:uid(), text:tx,
+            start:Math.round(st * 10) / 10, end:Math.round(en * 10) / 10 });
+          added++;
+        });
+        state.subtitles.sort(function(a, b){ return a.start - b.start; });
+        state.selectedSubtitleId = null;
+        renderSubDisplay(); renderSubEdit(); renderToolPanel();
+        toast(added ? ("已导入 " + added + " 条字幕") : "没有解析出字幕，检查 SRT 格式");
+      };
+      rd.readAsText(file, "utf-8");
     }
 
     /* ================= 顶部显性键（横屏/桌面） + 快捷键 ================= */
@@ -2813,6 +3111,42 @@
             var codeO = await inst.exec(args);
             if (codeO !== 0) throw new Error("贴纸/文字叠加失败");
             outName = "ovfinal.mp4";
+          }
+        }
+        // 字幕：逐条渲染透明 PNG，底部居中按时间窗烧录（与贴纸/文字同一机制）
+        var subs = state.subtitles.filter(function(s){ return s.end > s.start && (s.text || "").trim(); })
+          .sort(function(a, b){ return a.start - b.start; });
+        if (subs.length){
+          checkCancel();
+          setStep(0.93, 0.05, "正在烧录字幕…");
+          var okSub = [];
+          for (var si = 0; si < subs.length; si++){
+            var sblob = await subtitlePngBlob(subs[si], W, H);
+            if (!sblob) continue;
+            var sfn = "sub" + si + ".png";
+            try { await inst.writeFile(sfn, await fetchFile(sblob)); }
+            catch(e){ continue; }
+            written.push(sfn);
+            okSub.push({ sub: subs[si], fn: sfn });
+          }
+          if (okSub.length){
+            var sArgs = ["-i", outName];
+            okSub.forEach(function(o){ sArgs.push("-i", o.fn); });
+            var sChains = [];
+            var scur = "[0:v]";
+            for (var sj = 0; sj < okSub.length; sj++){
+              var sb2 = okSub[sj].sub;
+              var sout = "[sv" + (sj + 1) + "]";
+              sChains.push(scur + "[" + (sj + 1) + ":v]overlay=x='(W-w)/2':y='H-h-H*0.04':enable='between(t," +
+                sb2.start.toFixed(2) + "," + sb2.end.toFixed(2) + ")'" + sout);
+              scur = sout;
+            }
+            sArgs.push("-filter_complex", sChains.join(";"), "-map", scur, "-map", "0:a:0",
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy", "subfinal.mp4");
+            written.push("subfinal.mp4");
+            var codeS = await inst.exec(sArgs);
+            if (codeS !== 0) throw new Error("字幕烧录失败");
+            outName = "subfinal.mp4";
           }
         }
         checkCancel();

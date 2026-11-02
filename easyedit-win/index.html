@@ -747,7 +747,8 @@
     }
     function copyClipProps(c){
       return { speed:c.speed || 1, filter:c.filter || "none", cropRatio:c.cropRatio || "orig",
-        cropPos:c.cropPos || "mid", zoom:c.zoom || "none", reverse:!!c.reverse, enhance:!!c.enhance };
+        cropPos:c.cropPos || "mid", zoom:c.zoom || "none", reverse:!!c.reverse, enhance:!!c.enhance,
+        fadeIn:(c.fadeIn || 0), fadeOut:(c.fadeOut || 0), dissolve:(c.dissolve || 0) };
     }
     var state = {
       media: [],        // {id,file,url,name,duration,vw,vh,thumb,rot}
@@ -884,7 +885,8 @@
     });
     function makeClip(mediaId){
       var m = mediaById(mediaId); if (!m || !m.duration) return null;
-      var c = { id:uid(), kind:"v", track:0, mediaId:mediaId, inn:0, out:m.duration, volume:1, muted:false, rot:(m.rot || 0), gap:0 };
+      var c = { id:uid(), kind:"v", track:0, mediaId:mediaId, inn:0, out:m.duration, volume:1, muted:false, rot:(m.rot || 0), gap:0,
+        fadeIn:0, fadeOut:0, dissolve:0 };
       var base = clipPropsBase(); for (var k in base) c[k] = base[k];
       return c;
     }
@@ -1338,6 +1340,9 @@
       if (f.id !== "none") s += '<i class="dim">' + f.label + '</i>';
       if (c.zoom && c.zoom !== "none") s += '<i class="dim">' + (c.zoom === "in" ? "推镜" : "拉镜") + '</i>';
       if (c.muted) s += '<i class="dim">静音</i>';
+      if ((c.fadeIn || 0) > 0) s += '<i class="dim">淡入' + c.fadeIn + 's</i>';
+      if ((c.fadeOut || 0) > 0) s += '<i class="dim">淡出' + c.fadeOut + 's</i>';
+      if ((c.dissolve || 0) > 0) s += '<i>叠化' + c.dissolve + 's</i>';
       return s;
     }
     function renderTimeline(){
@@ -2133,6 +2138,7 @@
       if (!state.clips.length && !state.clips2.length){
         resetPvLoc(); video.removeAttribute("src");
         try { video.pause(); } catch(e){}
+        video.style.opacity = 1;
         syncAudioTracks(t, autoplay); auSyncIdx = [audIdxAt(0, t), audIdxAt(1, t)];
         layoutPreview(); return;
       }
@@ -2141,6 +2147,7 @@
         /* 视频黑场：清画面，音轨照播 */
         resetPvLoc();
         try { video.pause(); video.removeAttribute("src"); video.load(); } catch(e){}
+        video.style.opacity = 1;
         syncAudioTracks(t, autoplay); auSyncIdx = [audIdxAt(0, t), audIdxAt(1, t)];
         layoutPreview();
         renderOvVisibility();
@@ -2159,6 +2166,9 @@
       }
       applyPreviewAudio();
       video.playbackRate = clip.speed || 1;   // 变速预览
+      /* 淡入淡出/叠化：预览用透明度近似 */
+      var parr = v.track === 1 ? state.clips2 : state.clips;
+      video.style.opacity = videoFadeAt(clip, parr, v.idx, t).toFixed(3);
       layoutPreview();
       var target = clip.inn + v.local * (clip.speed || 1);
       if (Math.abs(video.currentTime - target) > 0.06){
@@ -2199,6 +2209,7 @@
           updatePlayheadUI();
           ensurePlayheadVisible();
           updateZoomTransform();
+          video.style.opacity = videoFadeAt(clip, arr, pvIdx, state.playhead).toFixed(3);
           renderOvVisibility();
         }
       } else {
@@ -2536,6 +2547,7 @@
         c2 = { id:uid(), kind:"v", track:c.track, mediaId:c.mediaId, inn:cut, out:c.out, volume:c.volume, muted:c.muted, rot:(c.rot || 0), gap:0 };
         for (var k in props) c2[k] = props[k];
         c.out = cut;
+        c.fadeOut = 0; c2.fadeIn = 0; c2.dissolve = 0;
       }
       arr.splice(t.idx + 1, 0, c2);
       state.selectedClipId = c2.id;
@@ -2683,7 +2695,8 @@
       sticker:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="9" cy="10" r=".4"/><circle cx="15" cy="10" r=".4"/><path d="M8.5 14.5a5 5 0 0 0 7 0"/></svg>',
       text:  '<svg class="ic" viewBox="0 0 24 24"><path d="M5 5.5V4h14v1.5M12 4v16M9.5 20h5"/></svg>',
       subtitle:'<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9.5h10M7 13h10M7 16.5h6"/></svg>',
-      replace:'<svg class="ic" viewBox="0 0 24 24"><path d="M4 8.5A8 8 0 0 1 19.6 6M20 15.5A8 8 0 0 1 4.4 18"/><path d="M20 3.5v4h-4M4 20.5v-4h4"/></svg>'
+      replace:'<svg class="ic" viewBox="0 0 24 24"><path d="M4 8.5A8 8 0 0 1 19.6 6M20 15.5A8 8 0 0 1 4.4 18"/><path d="M20 3.5v4h-4M4 20.5v-4h4"/></svg>',
+      fade:  '<svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" rx="2" fill="currentColor" opacity=".28"/><path d="M3.5 12h17" stroke="currentColor" stroke-width="1.4"/><path d="M6 6v12M18 6v12" stroke="currentColor" stroke-width="1.4" opacity=".55"/></svg>'
     };
     var CLIP_TOOLS = [
       { id:"trim", label:"截取", panel:true },
@@ -2697,6 +2710,7 @@
       { id:"enh", label:"增强", panel:true },
       { id:"mute", label:"静音" },
       { id:"vol", label:"音量", panel:true },
+      { id:"fade", label:"淡化", panel:true },
       { id:"rot", label:"旋转", panel:true },
       { id:"sticker", label:"贴纸", panel:true, noClip:true },
       { id:"text", label:"文字", panel:true, noClip:true },
@@ -2969,6 +2983,13 @@
         rg.addEventListener("change", function(){ renderClipPanel(); });
         f.appendChild(fl); f.appendChild(rg);
         p.appendChild(f);
+      } else if (t === "fade" && c && c.kind !== "a"){
+        p.appendChild(stepChips("淡入（从黑场渐显）", [0, 0.5, 1, 2, 3], c.fadeIn || 0, function(v){ c.fadeIn = v; renderTimeline(); renderClipPanel(); }));
+        p.appendChild(stepChips("淡出（渐隐到黑场）", [0, 0.5, 1, 2, 3], c.fadeOut || 0, function(v){ c.fadeOut = v; renderTimeline(); renderClipPanel(); }));
+        p.appendChild(stepChips("叠化（与上一段交叉溶解）", [0, 0.5, 1, 1.5, 2, 3], c.dissolve || 0, function(v){ c.dissolve = v; renderTimeline(); renderClipPanel(); }));
+        p.appendChild(panelNote(c.track === 1
+          ? "淡入/淡出：本段开头/结尾从黑场渐显/渐隐。叠化：本段开头从下层（V1）画面里淡入，与下层交叉溶解。导出生效；预览用透明度近似 timing。"
+          : "淡入/淡出：本段开头/结尾从黑场渐显/渐隐。叠化：与上一段在衔接处交叉溶解（上一段淡出的同时这一段淡入），设为 0 则硬切。导出生效；预览用透明度近似 timing。"));
       } else if (t === "rot" && c){
         var rr = document.createElement("div"); rr.className = "btn-row";
         var bl = document.createElement("button"); bl.className = "btn"; bl.textContent = "↺ 逆时针 90°";
@@ -3625,6 +3646,54 @@
       if (f.ff) parts.push(f.ff);
       return parts.join(",");
     }
+    /* 叠化合成参数：xfade（画面）+ acrossfade（声音）链；无叠化段用 concat 直拼 */
+    function buildDissolveArgs(segNames, segDurs){
+      var xArgs = [];
+      for (var xi=0; xi<segNames.length; xi++) xArgs.push("-i", segNames[xi]);
+      var xc = [];
+      var xv = "[0:v]", xa = "[0:a]";
+      var cum = segDurs[0].dur;
+      for (var xj=1; xj<segDurs.length; xj++){
+        var X = Math.min(segDurs[xj].dissolve || 0, segDurs[xj].dur * 0.999, cum * 0.999);
+        if (X > 0.01){
+          var xvo = "[xv" + xj + "]", xao = "[xa" + xj + "]";
+          xc.push(xv + "[" + xj + ":v]xfade=transition=fade:duration=" + X.toFixed(3) + ":offset=" + (cum - X).toFixed(3) + xvo);
+          xc.push(xa + "[" + xj + ":a]acrossfade=d=" + X.toFixed(3) + xao);
+          xv = xvo; xa = xao;
+          cum = cum + segDurs[xj].dur - X;
+        } else {
+          var cvo = "[cv" + xj + "]", cao = "[ca" + xj + "]";
+          xc.push(xv + "[" + xj + ":v]concat=n=2:v=1:a=0" + cvo);
+          xc.push(xa + "[" + xj + ":a]concat=n=2:v=0:a=1" + cao);
+          xv = cvo; xa = cao;
+          cum = cum + segDurs[xj].dur;
+        }
+      }
+      xArgs.push("-filter_complex", xc.join(";"), "-map", xv, "-map", xa,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-ar", "48000", "-b:a", "160k", "joined.mp4");
+      return { args:xArgs, outDur:cum };
+    }
+    /* 视频淡入淡出链（黑场渐显/隐，挂在画面链末尾） */
+    function videoFadeChain(c){
+      var d = clipDur(c);
+      var parts = [];
+      var fi = Math.min(c.fadeIn || 0, d), fo = Math.min(c.fadeOut || 0, d);
+      if (fi > 0.01) parts.push("fade=t=in:st=0:d=" + fi.toFixed(3));
+      if (fo > 0.01) parts.push("fade=t=out:st=" + Math.max(0, d - fo).toFixed(3) + ":d=" + fo.toFixed(3));
+      return parts.join(",");
+    }
+    /* 预览用透明度近似：淡入/淡出/叠化（叠化按 max(淡入,叠化) 计 timing） */
+    function videoFadeAt(c, arr, idx, t){
+      var d = clipDur(c);
+      var local = Math.max(0, Math.min(t - clipStart(idx, arr), d));
+      var f = 1;
+      var fi = Math.min(Math.max(c.fadeIn || 0, c.dissolve || 0), d);
+      var fo = Math.min(c.fadeOut || 0, d);
+      if (fi > 0.01) f = Math.min(f, local / fi);
+      if (fo > 0.01) f = Math.min(f, (d - local) / fo);
+      return Math.max(0, Math.min(1, f));
+    }
     /* 单片段原声链：倒放→变速→音量→原声增强(loudnorm)→重采样 */
     function clipAudioChain(c){
       var parts = [];
@@ -3673,6 +3742,7 @@
         var blurBg = state.project.border === "blur";
         var n = state.clips.length;
         var segNames = [];
+        var segDurs = [];   // {dur, dissolve} —— 与 segNames 一一对应，供叠化合成
         for (var i=0;i<n;i++){
           checkCancel();
           var c = state.clips[i];
@@ -3691,6 +3761,7 @@
               "-c:a","aac","-b:a","160k", gN]);
             if (codeG !== 0) throw new Error("黑场片段生成失败");
             segNames.push(gN);
+            segDurs.push({ dur:g, dissolve:0 });
           }
           var ext = (m.name.match(/\.[a-z0-9]+$/i) || [".mp4"])[0];
           var inN = "in" + i + ext, vN = "v" + i + ".mp4", aN = "a" + i + ".m4a", sN = "seg" + i + ".mp4";
@@ -3699,18 +3770,19 @@
           var srcLen = srcDur(c).toFixed(3);       // 输入侧读源时长（秒）
           var outLen = clipDur(c).toFixed(3);      // 输出时长 = 源时长 / speed
           var vchain = clipVideoChain(c);
+          var fadeC = videoFadeChain(c);
           setStep(base, each * 0.55, "处理片段 " + (i+1) + "/" + n + "（画面）…");
           var codeV;
           if (blurBg){
             var fc = "[0:v]" + vchain + "[base];[base]split=2[bgin][fgin];" +
               "[bgin]scale=" + W + ":" + H + ":force_original_aspect_ratio=increase,crop=" + W + ":" + H + ",gblur=sigma=40[bg];" +
               "[fgin]scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease[fg];" +
-              "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p[vout]";
+              "[bg][fg]overlay=(W-w)/2:(H-h)/2" + (fadeC ? "," + fadeC : "") + ",setsar=1,format=yuv420p[vout]";
             codeV = await inst.exec(["-ss", c.inn.toFixed(3), "-t", srcLen, "-i", inN,
               "-filter_complex", fc, "-map", "[vout]",
               "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an", "-metadata:s:v:0", "rotate=0", vN]);
           } else {
-            var vf = (vchain ? vchain + "," : "") +
+            var vf = (vchain ? vchain + "," : "") + (fadeC ? fadeC + "," : "") +
               "scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease," +
               "pad=" + W + ":" + H + ":(ow-iw)/2:(oh-ih)/2:color=" + padColor + ",setsar=1,format=yuv420p";
             codeV = await inst.exec(["-ss", c.inn.toFixed(3), "-t", srcLen, "-i", inN, "-vf", vf,
@@ -3733,15 +3805,26 @@
           var codeM = await inst.exec(["-i", vN, "-i", aN, "-c", "copy", "-shortest", sN]);
           if (codeM !== 0) throw new Error("片段 " + (i+1) + " 合并失败");
           segNames.push(sN);
+          segDurs.push({ dur:parseFloat(outLen), dissolve:(c.dissolve || 0) });
           try { await inst.deleteFile(inN); } catch(e){}
         }
         checkCancel();
-        setStep(0.63, 0.12, "正在拼接全部片段…");
-        var listTxt = segNames.map(function(s){ return "file '" + s + "'"; }).join("\n");
-        await inst.writeFile("list.txt", new TextEncoder().encode(listTxt));
-        written.push("list.txt", "joined.mp4");
-        var codeC = await inst.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "joined.mp4"]);
-        if (codeC !== 0) throw new Error("片段拼接失败");
+        var hasDissolve = segDurs.some(function(sg){ return (sg.dissolve || 0) > 0.01; }) && segNames.length > 1;
+        if (hasDissolve){
+          // ★ 叠化合成：xfade（画面）+ acrossfade（声音）链，替代 concat
+          setStep(0.63, 0.12, "正在合成叠化转场…");
+          var dasm = buildDissolveArgs(segNames, segDurs);
+          written.push("joined.mp4");
+          var codeX = await inst.exec(dasm.args);
+          if (codeX !== 0) throw new Error("叠化合成失败");
+        } else {
+          setStep(0.63, 0.12, "正在拼接全部片段…");
+          var listTxt = segNames.map(function(s){ return "file '" + s + "'"; }).join("\n");
+          await inst.writeFile("list.txt", new TextEncoder().encode(listTxt));
+          written.push("list.txt", "joined.mp4");
+          var codeC = await inst.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "joined.mp4"]);
+          if (codeC !== 0) throw new Error("片段拼接失败");
+        }
         var outName = "joined.mp4";
         /* ============ 多轨道合成：V2 叠加 + A1/A2 混音（含淡入淡出/交叉淡化） ============ */
         var needMix = state.clips2.length > 0 || state.a1.length > 0 || state.a2.length > 0;
@@ -3763,18 +3846,19 @@
             await inst.writeFile(vinN, await fetchFile(vm.file));
             var vsrcLen = srcDur(vc).toFixed(3);
             var vchain2 = clipVideoChain(vc);
+            var fadeC2 = videoFadeChain(vc);
             ovStatus("正在处理 V2 片段 " + (vi+1) + "/" + nV2 + "（画面）…");
             var codeV2;
             if (blurBg){
               var fc2 = "[0:v]" + vchain2 + "[base];[base]split=2[bgin][fgin];" +
                 "[bgin]scale=" + W + ":" + H + ":force_original_aspect_ratio=increase,crop=" + W + ":" + H + ",gblur=sigma=40[bg];" +
                 "[fgin]scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease[fg];" +
-                "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p[vout]";
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2" + (fadeC2 ? "," + fadeC2 : "") + ",setsar=1,format=yuv420p[vout]";
               codeV2 = await inst.exec(["-ss", vc.inn.toFixed(3), "-t", vsrcLen, "-i", vinN,
                 "-filter_complex", fc2, "-map", "[vout]",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an", "-metadata:s:v:0", "rotate=0", vvN]);
             } else {
-              var vf2 = (vchain2 ? vchain2 + "," : "") +
+              var vf2 = (vchain2 ? vchain2 + "," : "") + (fadeC2 ? fadeC2 + "," : "") +
                 "scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease," +
                 "pad=" + W + ":" + H + ":(ow-iw)/2:(oh-ih)/2:color=" + padColor + ",setsar=1,format=yuv420p";
               codeV2 = await inst.exec(["-ss", vc.inn.toFixed(3), "-t", vsrcLen, "-i", vinN, "-vf", vf2,
@@ -3849,9 +3933,21 @@
             vcur = "[vbase]"; acur = "[abase]";
           }
           for (var oi=0; oi<nV2; oi++){
-            var os = v2Starts[oi], oe = os + clipDur(state.clips2[oi]);
+            var vc2 = state.clips2[oi];
+            var os = v2Starts[oi], oe = os + clipDur(vc2);
             var oOut = "[vv" + oi + "]";
-            chains.push(vcur + "[" + (1 + oi) + ":v]overlay=0:0:enable='between(t," + os.toFixed(3) + "," + oe.toFixed(3) + ")'" + oOut);
+            // ★ 时间戳对齐：overlay 按时间戳取帧，V2 本地 0 必须对准输出 S，否则内容会被吞掉前 S 秒
+            var vShift = "[v2s" + oi + "]";
+            chains.push("[" + (1 + oi) + ":v]setpts=PTS-STARTPTS+" + os.toFixed(3) + "/TB" + vShift);
+            var vIn2 = vShift;
+            var vxd = Math.min(vc2.dissolve || 0, clipDur(vc2) * 0.999);
+            if (vxd > 0.01){
+              // V2 叠化：开头从下层（V1）画面里淡入（alpha 交叉溶解）
+              var vfl = "[v2f" + oi + "]";
+              chains.push(vIn2 + "format=rgba,fade=t=in:st=" + os.toFixed(3) + ":d=" + vxd.toFixed(3) + ":alpha=1" + vfl);
+              vIn2 = vfl;
+            }
+            chains.push(vcur + vIn2 + "overlay=0:0:enable='between(t," + os.toFixed(3) + "," + oe.toFixed(3) + ")'" + oOut);
             vcur = oOut;
           }
           var aLabels = [acur];

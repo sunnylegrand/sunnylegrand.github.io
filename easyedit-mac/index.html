@@ -1,0 +1,3180 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="data:," />
+    <title>EasyEdit</title>
+    <style>
+      :root{
+        --bg:#000; --panel:#101012; --panel2:#17181b; --panel3:#242529; --block:#2b2c31;
+        --line:#2b2c31; --text:#f2f3f5; --dim:#9aa0a8; --dim2:#6d7278;
+        --blue:#2f7cf6; --red:#ff3b30; --red2:#ff5147; --green:#35c26e;
+        --radius:12px;
+      }
+      *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+      html,body{ height:100%; }
+      body{
+        margin:0; background:var(--bg); color:var(--text);
+        font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+        font-size:14px; overflow:hidden;
+      }
+      button{ font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+      input[type=range]{ accent-color:var(--red2); }
+      svg.ic{ width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto; }
+      svg.ic.fill{ fill:currentColor; stroke:none; }
+
+      #app{ display:flex; flex-direction:column; height:100dvh; background:var(--bg); }
+
+      /* ---------- top bar（参考图：‹ + 居中标题 + 红色按钮） ---------- */
+      .topbar{
+        flex:0 0 auto; position:relative; display:flex; align-items:center; gap:8px;
+        padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px; background:var(--bg); z-index:30;
+      }
+      .back-btn{
+        width:38px; height:38px; display:flex; align-items:center; justify-content:center;
+        font-size:26px; line-height:1; color:var(--text); border-radius:10px; flex:0 0 auto;
+      }
+      .back-btn:active{ background:var(--panel3); }
+      .top-title{
+        position:absolute; left:50%; top:calc(env(safe-area-inset-top,0px) + 8px); transform:translateX(-50%);
+        height:38px; display:flex; align-items:center; font-size:16.5px; font-weight:600; pointer-events:none; white-space:nowrap;
+      }
+      .topbar .spacer{ flex:1; }
+      .btn{
+        display:inline-flex; align-items:center; gap:6px; justify-content:center;
+        padding:8px 14px; border-radius:10px; background:var(--panel3);
+        color:var(--text); font-size:14px; line-height:1; white-space:nowrap;
+      }
+      .btn:active{ filter:brightness(1.25); }
+      .btn.primary{ background:var(--red); color:#fff; font-weight:600; border-radius:11px; padding:10px 18px; }
+      .btn.primary:active{ filter:brightness(.85); }
+      .btn.blue{ background:var(--blue); color:#fff; font-weight:600; }
+      .btn:disabled{ opacity:.38; pointer-events:none; }
+      .btn.small{ padding:6px 10px; font-size:13px; border-radius:8px; }
+      .btn.danger{ background:#3a2321; color:#ff8a84; }
+      .btn.ghost{ background:transparent; border:1px solid var(--line); }
+      #btnImportTop{ display:none; }
+
+      /* ---------- layout columns ---------- */
+      .stage-col{ flex:0 0 auto; display:flex; flex-direction:column; background:var(--bg); }
+      .side-col{ flex:1 1 auto; display:flex; flex-direction:column; min-height:0; background:var(--panel); border-top:1px solid #1d1d20; }
+
+      /* ---------- preview（信箱式黑场，画幅框居中） ---------- */
+      .preview-wrap{
+        position:relative; background:#000; height:35dvh; min-height:190px; overflow:hidden; flex:0 0 auto;
+      }
+      .frame-box{
+        position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+        overflow:hidden; background:#000;
+      }
+      .frame-bg{ position:absolute; inset:0; background-size:cover; background-position:center; display:none; }
+      .rotwrap{ position:absolute; }
+      .rotwrap video{ position:absolute; left:50%; top:50%; display:block; background:#000; }
+      .vignette-fx{
+        position:absolute; inset:0; pointer-events:none; display:none;
+        background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(0,0,0,.58) 100%);
+      }
+      .rev-tag{
+        position:absolute; left:8px; top:8px; z-index:6; display:none; pointer-events:none;
+        background:rgba(0,0,0,.66); border:1px solid rgba(255,255,255,.35); color:#fff;
+        font-size:11px; padding:3px 8px; border-radius:20px;
+      }
+      .ov-layer{ position:absolute; inset:0; z-index:5; }
+      /* 字幕显示层：底部居中，经典字幕样式 */
+      .sub-display{ position:absolute; left:0; right:0; bottom:4%; z-index:6;
+        display:none; text-align:center; pointer-events:none; padding:0 4%; }
+      .sub-display span{ display:inline-block; max-width:100%; font-weight:700; color:#fff;
+        background:rgba(0,0,0,.55); border-radius:8px; padding:.22em .6em;
+        text-shadow:0 1px 3px rgba(0,0,0,.85); line-height:1.4; word-break:break-all; white-space:pre-line; }
+      .sub-display.nobg span{ background:transparent; }
+      /* 字幕列表项 */
+      .sub-list-item{ display:flex; align-items:center; gap:8px; padding:9px 4px;
+        border-bottom:1px solid var(--line); cursor:pointer; }
+      .sub-list-item .grow{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+        white-space:nowrap; font-size:13px; }
+      .sub-list-item .tm{ color:var(--dim); font-size:12px; white-space:nowrap; }
+      .sub-list-item.on{ background:var(--panel3); border-radius:8px; }
+      .sub-list-item button{ flex:none; background:none; border:none; color:#ff6b61;
+        font-size:13px; padding:4px 6px; }
+      .ov-item{ position:absolute; transform:translate(-50%,-50%); cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
+      .ov-item.sel{ outline:1.5px dashed rgba(255,255,255,.85); outline-offset:3px; border-radius:4px; }
+      .ov-item img{ display:block; pointer-events:none; }
+      .ov-item .ovtxt{ pointer-events:none; white-space:nowrap; font-weight:700; line-height:1.3; }
+      .preview-empty{
+        position:absolute; inset:0; display:flex; flex-direction:column; gap:8px;
+        align-items:center; justify-content:center; color:var(--dim); text-align:center; padding:20px;
+        pointer-events:none; z-index:4;
+      }
+      .preview-empty .big{ font-size:15px; color:var(--text); }
+
+      /* ---------- 胶囊行：画幅/边框 + 旋转快捷 ---------- */
+      .capsule-row{ flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:9px 12px 1px; }
+      .capsule{
+        display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:9px;
+        background:var(--panel3); font-size:13.5px; color:var(--text);
+      }
+      .capsule svg.ic{ width:18px; height:18px; }
+      .capsule:active{ filter:brightness(1.3); }
+      .capsule .cv{ color:var(--dim); font-size:12.5px; }
+      .capsule-row .spacer{ flex:1; }
+      .frame-panel{ display:none; margin:8px 12px 0; padding:11px 12px; background:var(--panel2); border:1px solid var(--line); border-radius:12px; }
+      .frame-panel.on{ display:block; }
+      .frame-panel .fp-label{ font-size:12px; color:var(--dim); margin:2px 0 7px; }
+      .frame-panel .fp-label.mt{ margin-top:12px; }
+
+      /* ---------- 走带行 ---------- */
+      .transport{
+        flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:7px 12px 3px; min-height:44px;
+      }
+      .time-label{ font-variant-numeric:tabular-nums; font-size:13.5px; color:var(--dim); white-space:nowrap; min-width:96px; }
+      .time-label b{ color:var(--text); font-weight:600; }
+      .transport .grow{ flex:1; }
+      .tp-btn{
+        width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:var(--text); border-radius:50%;
+      }
+      .tp-btn:active{ background:var(--panel3); }
+      .tp-btn svg.ic{ width:23px; height:23px; }
+      .tp-btn.main svg.ic{ width:27px; height:27px; }
+      .sort-btn{
+        display:inline-flex; align-items:center; gap:5px; padding:7px 10px; border-radius:8px; font-size:13.5px; color:var(--text);
+      }
+      .sort-btn svg.ic{ width:18px; height:18px; }
+      .sort-btn.on{ background:var(--block); }
+      .sort-btn:active{ filter:brightness(1.3); }
+
+      /* ---------- bgm strip ---------- */
+      .bgm-strip{
+        display:none; align-items:center; gap:8px; margin:6px 12px 0; padding:7px 10px;
+        background:#152238; border:1px solid #24406e; border-radius:9px; font-size:12.5px;
+      }
+      .bgm-strip.on{ display:flex; }
+      .bgm-strip .name{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#cfe2ff; }
+      .bgm-strip button{ color:#8dbcff; font-size:12.5px; padding:2px 4px; }
+
+      /* ---------- edit toolbar（横屏/桌面保留的显性剪辑键） ---------- */
+      .editbar{ display:none; }
+      .kbd{
+        display:inline-block; padding:1px 6px; margin-left:6px; border:1px solid var(--line);
+        border-bottom-width:2px; border-radius:5px; background:var(--panel); color:var(--dim);
+        font-size:11px; line-height:1.5;
+      }
+      .kbd-hint{ display:none; }
+
+      /* ---------- sort bar ---------- */
+      .sortbar{
+        display:none; align-items:center; gap:8px; margin:6px 12px 0; padding:8px 10px;
+        background:#26241a; border:1px solid #4d4525; border-radius:10px; font-size:12.5px; color:#e8dfae;
+      }
+      .sortbar.on{ display:flex; }
+      .sortbar .grow{ flex:1; }
+      .sortbar .btn{ background:#3a3722; color:#f2ead0; }
+
+      /* ---------- timeline（胶片条 + 中央固定红针） ---------- */
+      .timeline-head{ display:none; }
+      .timeline-scroll{
+        position:relative; overflow-x:auto; overflow-y:hidden; flex:0 0 auto;
+        scrollbar-width:none; touch-action:pan-x pan-y; background:var(--bg);
+      }
+      .timeline-scroll::-webkit-scrollbar{ display:none; }
+      .timeline-inner{ position:relative; padding:0 60px 8px 60px; }
+      .ruler{ position:relative; height:19px; cursor:pointer; }
+      .ruler .tick{ position:absolute; top:0; height:100%; }
+      .ruler .tick::before{ content:""; position:absolute; left:0; bottom:0; width:1px; height:5px; background:#3a3b40; }
+      .ruler .tick span{ position:absolute; left:2px; top:1px; font-size:10px; color:var(--dim2); font-variant-numeric:tabular-nums; }
+      .track{ position:relative; height:58px; margin-top:2px; }
+      .track-empty{
+        position:absolute; top:0; bottom:0; display:flex; align-items:center; justify-content:center;
+        color:var(--dim2); font-size:13px; border:1px dashed #33343a; border-radius:10px;
+        text-align:center; padding:0 10px;
+      }
+      .clip{
+        position:absolute; top:0; height:58px; border-radius:7px; overflow:hidden;
+        background:#26272c; border:2px solid transparent;
+        cursor:pointer; user-select:none; -webkit-user-select:none; touch-action:none;
+      }
+      .clip.sel{ border-color:var(--blue); }
+      .clip.dragging{ opacity:.78; z-index:5; box-shadow:0 6px 18px rgba(0,0,0,.55); }
+      .clip canvas.film{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+      .clip .shade{ position:absolute; inset:0; background:rgba(0,0,0,.22); pointer-events:none; }
+      .clip .cname{
+        position:absolute; left:6px; right:6px; bottom:4px; font-size:10.5px; line-height:1.25; z-index:2;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-shadow:0 1px 3px rgba(0,0,0,.85); pointer-events:none;
+      }
+      .clip .cdur{ position:absolute; left:6px; top:4px; font-size:10px; color:#fff; z-index:2; text-shadow:0 1px 3px rgba(0,0,0,.9); font-variant-numeric:tabular-nums; pointer-events:none; }
+      .clip .cbadges{ position:absolute; right:5px; top:3px; z-index:2; display:flex; gap:3px; pointer-events:none; }
+      .clip .cbadges i{
+        font-style:normal; font-size:9.5px; line-height:1; padding:2.5px 4px; border-radius:4px;
+        background:rgba(0,0,0,.62); color:#ffd9d6; text-shadow:none;
+      }
+      .clip .cbadges i.dim{ color:#cfd3d8; }
+      .clip .handle{
+        position:absolute; top:0; bottom:0; width:16px; display:none; align-items:center; justify-content:center;
+        background:rgba(47,124,246,.85); cursor:ew-resize; touch-action:none; z-index:3;
+      }
+      .clip.sel .handle{ display:flex; }
+      .clip .handle.l{ left:0; border-radius:5px 0 0 5px; }
+      .clip .handle.r{ right:0; border-radius:0 5px 5px 0; }
+      .clip .handle::after{ content:""; width:3px; height:22px; border-radius:2px; background:rgba(255,255,255,.9); }
+      /* 片段上被裁掉部分的阴影（入点左侧 / 出点右侧） */
+      .clip .cut{ position:absolute; top:0; bottom:0; width:0; z-index:1; pointer-events:none; background:rgba(0,0,0,.55); }
+      .clip .cut.l{ left:0; border-right:1px solid rgba(255,255,255,.45); }
+      .clip .cut.r{ right:0; border-left:1px solid rgba(255,255,255,.45); }
+      .playhead{
+        position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px;
+        background:var(--red2); z-index:8; pointer-events:none;
+      }
+      .playhead::before{
+        content:""; position:absolute; top:0; left:50%; transform:translateX(-50%);
+        border:6px solid transparent; border-top:8px solid var(--red2);
+      }
+      .playhead-grab{
+        position:absolute; top:0; bottom:0; left:50%; width:30px; margin-left:-15px; z-index:9; cursor:ew-resize; touch-action:none;
+      }
+      .trim-tip{
+        position:fixed; z-index:45; display:none; pointer-events:none;
+        background:rgba(10,10,12,.93); border:1px solid var(--line); color:var(--text);
+        font-size:12.5px; padding:5px 10px; border-radius:8px; font-variant-numeric:tabular-nums; white-space:nowrap;
+      }
+
+      /* ---------- 底部页签栏（图标+竖排小字，选中浅色块） ---------- */
+      .tabbar{ flex:0 0 auto; display:flex; gap:2px; padding:5px 6px calc(6px + env(safe-area-inset-bottom,0px)); background:#0a0a0c; order:2; }
+      .tabbar button{
+        flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+        padding:7px 0 6px; border-radius:11px; font-size:11px; color:var(--dim);
+      }
+      .tabbar button svg.ic{ width:22px; height:22px; }
+      .tabbar button.on{ color:var(--text); background:var(--block); }
+      .tabbar .dot{ display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--red2); margin-left:3px; vertical-align:2px; }
+
+      /* ---------- panels / context views ---------- */
+      .panels{ flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:12px; }
+      .panel{ display:none; padding:12px; }
+      .panel.on{ display:block; }
+      .hint{ color:var(--dim); font-size:13px; line-height:1.6; }
+      .hint.center{ text-align:center; padding:22px 10px; }
+
+      /* 工具行（大图标+下文字，可横滑） */
+      .toolrow{
+        display:flex; gap:2px; overflow-x:auto; overflow-y:hidden; padding:4px 2px 2px;
+        scrollbar-width:none; -webkit-overflow-scrolling:touch;
+      }
+      .toolrow::-webkit-scrollbar{ display:none; }
+      .tool{
+        flex:0 0 auto; width:62px; display:flex; flex-direction:column; align-items:center; gap:5px;
+        padding:8px 0 6px; border-radius:10px; color:var(--text); font-size:11.5px;
+      }
+      .tool svg.ic{ width:25px; height:25px; }
+      .tool:active{ background:var(--panel3); }
+      .tool.on{ color:#ffb3ae; background:var(--panel3); }
+      .tool.toggled{ color:#ffb3ae; }
+      .tool:disabled{ opacity:.35; pointer-events:none; }
+      .toolpanel{ margin-top:8px; padding:11px 12px; background:var(--panel2); border:1px solid var(--line); border-radius:12px; display:none; }
+      .toolpanel.on{ display:block; }
+      .chips{ display:flex; gap:7px; flex-wrap:wrap; }
+      .chip{
+        padding:7px 12px; border-radius:20px; background:var(--panel3); font-size:13px; color:var(--text);
+        display:inline-flex; align-items:center; gap:6px;
+      }
+      .chip.on{ background:var(--red); color:#fff; font-weight:600; }
+      .chip:active{ filter:brightness(1.25); }
+      .chip img{ width:34px; height:22px; object-fit:cover; border-radius:5px; }
+      .clip-info{ display:flex; align-items:baseline; gap:8px; padding:2px 2px 6px; }
+      .clip-info .nm{ font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .clip-info .rg{ font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+      /* 分段条 */
+      .segstrip{
+        display:flex; align-items:stretch; gap:7px; overflow-x:auto; overflow-y:hidden;
+        padding:6px 2px 10px; scrollbar-width:none; -webkit-overflow-scrolling:touch;
+      }
+      .segstrip::-webkit-scrollbar{ display:none; }
+      .seg-add{
+        flex:0 0 auto; min-width:64px; border-radius:9px; background:var(--panel3); color:var(--text);
+        font-size:13px; display:flex; align-items:center; justify-content:center; padding:0 10px;
+      }
+      .seg-plus{
+        flex:0 0 auto; width:30px; align-self:center; height:34px; border-radius:8px; background:var(--panel3);
+        font-size:17px; color:var(--text); display:flex; align-items:center; justify-content:center;
+      }
+      .seg-item{
+        position:relative; flex:0 0 auto; width:104px; height:62px; border-radius:9px; overflow:hidden;
+        background:#26272c center/cover no-repeat; border:2.5px solid transparent; cursor:pointer;
+      }
+      .seg-item.sel{ border-color:#fff; }
+      .seg-item .idx{
+        position:absolute; left:0; top:0; background:rgba(255,255,255,.92); color:#111;
+        font-size:10.5px; font-weight:700; padding:1.5px 6px; border-radius:0 0 7px 0; z-index:2;
+      }
+      .seg-item .sd{
+        position:absolute; right:5px; bottom:4px; font-size:11px; color:#fff; z-index:2;
+        text-shadow:0 1px 3px rgba(0,0,0,.9); font-variant-numeric:tabular-nums;
+      }
+      .seg-item .sn{
+        position:absolute; left:5px; bottom:4px; right:44px; font-size:10px; color:#e8e9eb; z-index:2;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-shadow:0 1px 3px rgba(0,0,0,.85);
+      }
+
+      /* 素材/音频列表 */
+      .media-item, .audio-item{
+        display:flex; gap:10px; align-items:center; background:var(--panel2);
+        border:1px solid var(--line); border-radius:var(--radius); padding:8px; margin-bottom:9px;
+      }
+      .media-item img{ width:74px; height:46px; object-fit:cover; border-radius:7px; background:#000; flex:0 0 auto; }
+      .media-item .meta, .audio-item .meta{ flex:1; min-width:0; }
+      .media-item .name, .audio-item .name{ font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .media-item .sub, .audio-item .sub{ font-size:12px; color:var(--dim); margin-top:3px; font-variant-numeric:tabular-nums; }
+      .media-item .acts, .audio-item .acts{ display:flex; flex-direction:column; gap:6px; flex:0 0 auto; }
+      .audio-item .a-ico{
+        width:46px; height:46px; border-radius:7px; background:#152238; color:#8dbcff; flex:0 0 auto;
+        display:flex; align-items:center; justify-content:center;
+      }
+      .audio-item .a-ico svg{ width:22px; height:22px; fill:#8dbcff; }
+      .audio-item audio{ width:100%; height:34px; margin-top:7px; }
+      .audio-item .row2{ display:flex; gap:6px; margin-top:7px; flex-wrap:wrap; }
+
+      .field{ margin-bottom:14px; }
+      .field .flabel{ display:flex; justify-content:space-between; font-size:13px; color:var(--dim); margin-bottom:7px; }
+      .field .flabel b{ color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+      .field input[type=range]{ width:100%; }
+      .field input[type=text]{
+        width:100%; background:var(--panel3); border:1px solid var(--line); border-radius:9px;
+        color:var(--text); padding:9px 11px; font-size:14px; outline:none;
+      }
+      .btn-row{ display:flex; gap:8px; flex-wrap:wrap; }
+      .btn-row .btn{ flex:1; min-width:92px; }
+      .seg-ctl{ display:flex; background:var(--panel3); border-radius:9px; padding:3px; gap:3px; }
+      .seg-ctl button{ flex:1; padding:7px 0; border-radius:7px; font-size:13px; color:var(--dim); }
+      .seg-ctl button.on{ background:var(--blue); color:#fff; font-weight:600; }
+      .sec-title{ font-size:13px; color:var(--dim); margin:16px 0 8px; }
+      .sec-title:first-child{ margin-top:0; }
+      .emoji-grid{ display:flex; flex-wrap:wrap; gap:7px; }
+      .emoji-grid button{
+        width:44px; height:44px; font-size:25px; border-radius:10px; background:var(--panel3);
+        display:flex; align-items:center; justify-content:center;
+      }
+      .swatches{ display:flex; gap:8px; align-items:center; }
+      .swatches button{ width:26px; height:26px; border-radius:50%; border:2px solid transparent; }
+      .swatches button.on{ border-color:#fff; }
+      .ov-list-item{
+        display:flex; align-items:center; gap:8px; padding:7px 9px; background:var(--panel3);
+        border-radius:9px; margin-top:7px; font-size:13px; cursor:pointer;
+      }
+      .ov-list-item.on{ outline:1.5px solid var(--red2); }
+      .ov-list-item .grow{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ov-list-item button{ color:#ff8a84; font-size:12.5px; padding:2px 4px; }
+
+      /* ---------- task overlay / confirm ---------- */
+      .overlay{
+        position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:50;
+        display:none; align-items:center; justify-content:center; padding:22px;
+      }
+      .overlay.on{ display:flex; }
+      .sheet{ background:var(--panel2); border:1px solid var(--line); border-radius:16px; padding:20px; width:100%; max-width:420px; }
+      .sheet h3{ margin:0 0 6px; font-size:16px; }
+      .sheet .st{ color:var(--dim); font-size:13px; line-height:1.55; min-height:20px; word-break:break-all; }
+      .bar{ height:8px; background:#2c2d33; border-radius:5px; overflow:hidden; margin:14px 0 6px; }
+      .bar i{ display:block; height:100%; width:0%; background:var(--red2); border-radius:5px; transition:width .18s; }
+      .pct{ text-align:right; font-size:12.5px; color:var(--dim); font-variant-numeric:tabular-nums; }
+      .sheet .btn-row{ margin-top:14px; }
+      .sheet .err{ color:#ff9d97; }
+
+      .toast{
+        position:fixed; left:50%; bottom:calc(96px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%) translateY(16px);
+        background:#2c2d33; color:var(--text); padding:9px 16px; border-radius:20px; font-size:13.5px;
+        opacity:0; pointer-events:none; transition:.25s; z-index:60; max-width:88vw; text-align:center;
+        box-shadow:0 8px 24px rgba(0,0,0,.5);
+      }
+      .toast.on{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+      /* ---------- landscape / desktop: 左右分栏（保留原结构与鼠标操作） ---------- */
+      @media (orientation:landscape) and (min-width:680px){
+        #app{ flex-direction:row; flex-wrap:wrap; }
+        .topbar{ position:absolute; top:0; right:0; left:auto; background:transparent; z-index:20; padding-right:calc(env(safe-area-inset-right,0px) + 12px); }
+        .topbar .back-btn, .topbar .top-title{ display:none; }
+        #btnImportTop{ display:inline-flex; }
+        .stage-col{ flex:1.55 1 0; min-width:0; height:100dvh; padding-top:env(safe-area-inset-top,0px); padding-left:env(safe-area-inset-left,0px); }
+        .side-col{ flex:1 1 0; min-width:330px; height:100dvh; border-top:none; border-left:1px solid var(--line); padding-top:env(safe-area-inset-top,0px); padding-right:env(safe-area-inset-right,0px); }
+        .side-col .tabbar{ order:0; margin-top:52px; padding-bottom:6px; background:transparent; border-bottom:1px solid var(--line); }
+        .side-col .panels{ order:1; }
+        .preview-wrap{ flex:1 1 auto; height:auto; min-height:0; }
+        .editbar{ display:flex; flex:0 0 auto; align-items:center; gap:8px; padding:8px 12px 0; flex-wrap:wrap; }
+        .editbar .grow{ flex:1; }
+        .timeline-head{ display:flex; align-items:center; gap:6px; padding:8px 12px 2px; }
+        .timeline-head .lbl{ font-size:12px; color:var(--dim); margin-right:auto; }
+        .zoom-btn{ width:30px; height:30px; border-radius:8px; background:var(--panel3); font-size:16px; line-height:1; }
+        .kbd-hint{ display:block; flex:0 0 auto; padding:5px 12px 7px; font-size:11.5px; color:var(--dim2); line-height:1.55; }
+        .toast{ bottom:26px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="topbar">
+        <button class="back-btn" id="btnBack" aria-label="返回">‹</button>
+        <div class="top-title">视频编辑</div>
+        <div class="spacer"></div>
+        <button class="btn" id="btnImportTop">＋ 导入视频</button>
+        <button class="btn primary" id="btnExport" disabled>导出 ›</button>
+      </div>
+
+      <div class="stage-col">
+        <div class="preview-wrap" id="previewWrap">
+          <div class="frame-box" id="frameBox" style="width:320px;height:180px">
+            <div class="frame-bg" id="frameBg"></div>
+            <div class="rotwrap" id="rotWrap">
+              <video id="video" playsinline preload="auto"></video>
+            </div>
+            <div class="vignette-fx" id="vignetteFx"></div>
+            <div class="ov-layer" id="ovLayer"></div>
+            <div class="sub-display" id="subDisplay"><span id="subSpan"></span></div>
+            <div class="rev-tag" id="revTag">倒放 · 导出后生效</div>
+          </div>
+          <div class="preview-empty" id="previewEmpty">
+            <div class="big">还没有可预览的内容</div>
+            <div>先导入视频素材，再把片段加入时间线</div>
+          </div>
+        </div>
+
+        <div class="capsule-row">
+          <button class="capsule" id="btnFrame">
+            <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M3 15h18"/></svg>
+            画幅 <span class="cv" id="frameCapVal">原始</span>
+          </button>
+          <button class="capsule" id="btnBorderCap">
+            <svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8.5" y="8.5" width="7" height="7" rx="1"/></svg>
+            边框 <span class="cv" id="borderCapVal">无</span>
+          </button>
+          <div class="spacer"></div>
+          <button class="capsule" id="btnRotateCap">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 3v4h-4"/></svg>
+            旋转 90°
+          </button>
+        </div>
+        <div class="frame-panel" id="framePanel">
+          <div class="fp-label">成片画幅（导出时按此画布归一化，黑边填充；预览同步）</div>
+          <div class="chips" id="aspectChips"></div>
+          <div class="fp-label mt">边框 / 填充样式</div>
+          <div class="chips" id="borderChips"></div>
+        </div>
+
+        <div class="transport">
+          <div class="time-label"><b id="tCur">00:00</b> / <span id="tTot">00:00</span></div>
+          <div class="grow"></div>
+          <button class="tp-btn" id="btnPrev" aria-label="上一段">
+            <svg class="ic fill" viewBox="0 0 24 24"><path d="M6 5h2.2v14H6zM19 5.8v12.4L9.5 12z"/></svg>
+          </button>
+          <button class="tp-btn main" id="btnPlay" aria-label="播放/暂停">
+            <svg class="ic fill" id="icoPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="ic fill" id="icoPause" viewBox="0 0 24 24" style="display:none"><path d="M6.5 5h3.6v14H6.5zM13.9 5h3.6v14h-3.6z"/></svg>
+          </button>
+          <button class="tp-btn" id="btnNext" aria-label="下一段">
+            <svg class="ic fill" viewBox="0 0 24 24"><path d="M15.8 5H18v14h-2.2zM5 5.8v12.4L14.5 12z"/></svg>
+          </button>
+          <div class="grow"></div>
+          <button class="sort-btn" id="btnSort">
+            <svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="8" height="8" rx="1.5"/><rect x="12.5" y="12.5" width="8" height="8" rx="1.5"/><path d="M15 3.5h5.5V9M9 20.5H3.5V15"/></svg>
+            排序
+          </button>
+        </div>
+        <div class="bgm-strip" id="bgmStrip">
+          <span>🎵</span><span class="name" id="bgmName"></span>
+          <span id="bgmModeLbl" style="color:#8dbcff"></span>
+          <button id="bgmStripEdit">设置</button>
+          <button id="bgmStripOff">移除</button>
+        </div>
+        <div class="sortbar" id="sortBar">
+          <span>排序模式：拖动片段调整顺序，或点选片段后用箭头移动</span>
+          <div class="grow"></div>
+          <button class="btn small" id="btnSortL">← 左移</button>
+          <button class="btn small" id="btnSortR">右移 →</button>
+          <button class="btn small" id="btnSortDone">完成</button>
+        </div>
+        <div class="editbar">
+          <button class="btn small" id="btnSplitTop" disabled>分割<span class="kbd">S</span></button>
+          <button class="btn small" id="btnSetIn" disabled>设为入点<span class="kbd">I</span></button>
+          <button class="btn small" id="btnSetOut" disabled>设为出点<span class="kbd">O</span></button>
+          <div class="grow"></div>
+          <button class="btn small danger" id="btnDelTop" disabled>删除片段<span class="kbd">Del</span></button>
+        </div>
+        <div class="timeline-head">
+          <span class="lbl">时间线 · 红针固定中央，拖动时间线在针下滚动 · 拖片段边缘裁剪 · 拖片段排序</span>
+          <button class="zoom-btn" id="zoomOut">−</button>
+          <button class="zoom-btn" id="zoomIn">＋</button>
+        </div>
+        <div class="timeline-scroll" id="tlScroll">
+          <div class="timeline-inner" id="tlInner">
+            <div class="ruler" id="ruler"></div>
+            <div class="track" id="track"></div>
+          </div>
+          <div class="playhead" id="playhead"></div>
+          <div class="playhead-grab" id="playheadGrab"></div>
+        </div>
+        <div class="kbd-hint">快捷键：空格 播放/暂停 · I 设入点 · O 设出点 · S 分割 · Delete 删除片段 · ←/→ 逐帧 · Shift+←/→ 跳 1 秒 · 滚轮横向滚动时间线 · Ctrl+滚轮缩放</div>
+      </div>
+
+      <div class="side-col">
+        <div class="panels">
+          <!-- 剪辑 -->
+          <section class="panel on" id="panel-clip">
+            <div id="clipNone" class="hint center">在时间线上点选一个片段<br>这里会出现它的剪辑工具</div>
+            <div id="clipBox" style="display:none">
+              <div class="clip-info">
+                <span class="nm" id="clipName">—</span>
+                <span class="rg" id="clipRange"></span>
+              </div>
+              <div class="toolrow" id="toolRow"></div>
+              <div class="toolpanel" id="toolPanel"></div>
+            </div>
+            <div id="ovEdit"></div>
+            <div id="subEdit"></div>
+            <input type="file" id="srtInput" accept=".srt,.vtt,text/plain" style="display:none">
+          </section>
+
+          <!-- 分段 -->
+          <section class="panel" id="panel-seg">
+            <div class="segstrip" id="segStrip"></div>
+            <div class="hint" id="segEmpty">时间线是空的。点「添加片头」导入第一段视频，或去「素材」里导入后加入时间线。</div>
+            <div class="toolrow" id="segToolRow" style="display:none"></div>
+            <p class="hint" style="margin-top:6px">点缩略图选中片段；片段之间的 ＋ 可在该位置插入新视频。工具行：旋转 / 复制 / 替换 / 删除 / 静音。</p>
+          </section>
+
+          <!-- 音频 -->
+          <section class="panel" id="panel-audio">
+            <div class="btn-row" style="margin-bottom:12px">
+              <button class="btn blue" id="btnImportAudio">导入音频文件</button>
+            </div>
+            <p class="hint">可导入 MP3 / M4A 等音频文件作为背景音乐来源；也可从「素材」里对视频点「提取音频」。</p>
+            <div class="sec-title">音频库（提取的 + 导入的）</div>
+            <div id="audioList"></div>
+            <p class="hint" id="audioEmpty">还没有音频。在「素材」里对任意视频点「提取音频」，或点上方按钮导入音频文件。</p>
+            <div id="bgmBox" style="display:none">
+              <div class="sec-title">背景音乐轨</div>
+              <div class="field">
+                <div class="flabel"><span>当前背景音乐</span><b id="bgmCurName">—</b></div>
+              </div>
+              <div class="field">
+                <div class="flabel"><span>与原声的关系</span></div>
+                <div class="seg-ctl" id="bgmModeSeg">
+                  <button data-mode="mix" class="on">与原声混合</button>
+                  <button data-mode="replace">替换原声</button>
+                </div>
+              </div>
+              <div class="field">
+                <div class="flabel"><span>背景音乐音量</span><b id="bgmVolVal">50%</b></div>
+                <input type="range" id="bgmVol" min="0" max="100" value="50">
+              </div>
+              <div class="btn-row">
+                <button class="btn danger" id="bgmRemove">移除背景音乐</button>
+              </div>
+            </div>
+            <div id="enhBox">
+              <div class="sec-title">原声增强（全局）</div>
+              <div class="field">
+                <div class="flabel"><span>导出时对每个片段原声做响度规范化</span><b id="enhGlobalVal">关</b></div>
+                <div class="btn-row">
+                  <button class="btn" id="btnEnhGlobal">开启原声增强</button>
+                </div>
+                <p class="hint" style="margin-top:7px">片段级开关在「剪辑」页签的「增强」工具里，与全局开关任一开启即生效（导出音频链 loudnorm）。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- 素材 -->
+          <section class="panel" id="panel-media">
+            <div class="btn-row" style="margin-bottom:12px">
+              <button class="btn primary" id="btnImport">导入视频素材</button>
+            </div>
+            <p class="hint">支持浏览器可播放的视频格式（MP4 / MOV / WebM 等），可一次多选。所有处理都在本机完成，视频不会上传。</p>
+            <div id="mediaList" style="margin-top:12px"></div>
+            <p class="hint center" id="mediaEmpty">还没有素材<br>点上方按钮从相册/文件里选视频</p>
+          </section>
+        </div>
+
+        <div class="tabbar">
+          <button data-tab="clip" class="on">
+            <svg class="ic" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.8 20 19M8.2 16.2 20 5"/></svg>
+            <span>剪辑</span>
+          </button>
+          <button data-tab="seg">
+            <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14M15 5v14"/></svg>
+            <span>分段</span>
+          </button>
+          <button data-tab="audio" id="tabAudio">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M9 18.5V6l10-2v12"/><circle cx="6.5" cy="18.5" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+            <span>音频</span>
+          </button>
+          <button data-tab="media">
+            <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.4"/><path d="M4 18.5 10 13l3.5 3L17 12.5l3 3.2"/></svg>
+            <span>素材</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 任务进度（FFmpeg 加载 / 提取音频 / 导出） -->
+    <div class="overlay" id="overlay">
+      <div class="sheet">
+        <h3 id="ovTitle">处理中</h3>
+        <div class="st" id="ovStatus">准备中…</div>
+        <div class="bar"><i id="ovBar"></i></div>
+        <div class="pct" id="ovPct">0%</div>
+        <div class="btn-row">
+          <button class="btn danger" id="ovCancel">取消</button>
+          <button class="btn primary" id="ovRetry" style="display:none">重试</button>
+          <button class="btn" id="ovClose" style="display:none">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 通用确认 -->
+    <div class="overlay" id="confirmOverlay">
+      <div class="sheet">
+        <h3 id="cfTitle">请确认</h3>
+        <div class="st" id="cfText"></div>
+        <div class="btn-row">
+          <button class="btn" id="cfCancel">取消</button>
+          <button class="btn primary" id="cfOk">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="trim-tip" id="trimTip"></div>
+    <div class="toast" id="toast"></div>
+    <input type="file" id="fileInput" accept="video/*,.mp4,.mov,.webm,.mkv,.m4v" multiple hidden>
+    <input type="file" id="audioInput" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" hidden>
+    <input type="file" id="stickerInput" accept="image/*" hidden>
+    <audio id="bgmAudio" loop preload="auto" style="display:none"></audio>
+
+    <script>
+    "use strict";
+    /* ================= 状态 ================= */
+    var $ = function(id){ return document.getElementById(id); };
+    var uidC = 1;
+    function uid(){ return "id" + (uidC++) + "_" + Date.now().toString(36); }
+    var SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+    var ASPECTS = [
+      { id:"orig", label:"原始" }, { id:"16:9", label:"16:9" }, { id:"9:16", label:"9:16" },
+      { id:"1:1", label:"1:1" }, { id:"4:3", label:"4:3" }, { id:"3:4", label:"3:4" }
+    ];
+    var BORDERS = [
+      { id:"none", label:"无（黑边）" }, { id:"black", label:"黑色" },
+      { id:"white", label:"白色" }, { id:"blur", label:"模糊背景填充" }
+    ];
+    var CROP_RATIOS = [ { id:"orig", label:"原图" }, { id:"16:9", label:"16:9" }, { id:"9:16", label:"9:16" }, { id:"1:1", label:"1:1" } ];
+    var CROP_POS = [ { id:"mid", label:"居中" }, { id:"top", label:"靠上" }, { id:"bottom", label:"靠下" } ];
+    /* 滤镜预设：css=预览近似，ff=导出 FFmpeg 链，参数尽量对齐 */
+    var FILTERS = [
+      { id:"none",     label:"原图", css:"", ff:"" },
+      { id:"vivid",    label:"鲜亮", css:"saturate(1.35) contrast(1.08) brightness(1.04)", ff:"eq=saturation=1.35:contrast=1.08:brightness=0.03" },
+      { id:"retro",    label:"怀旧", css:"sepia(0.5) saturate(0.82) contrast(1.04) brightness(1.02)", ff:"colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0,eq=saturation=0.82:contrast=1.04" },
+      { id:"mono",     label:"黑白", css:"grayscale(1)", ff:"hue=s=0" },
+      { id:"warm",     label:"暖阳", css:"sepia(0.3) saturate(1.16) brightness(1.03)", ff:"colorbalance=rs=0.14:gs=0.04:bs=-0.12:rm=0.08:gm=0.02:bm=-0.06,eq=saturation=1.12" },
+      { id:"cool",     label:"冷调", css:"saturate(1.06) hue-rotate(10deg) brightness(1.02)", ff:"colorbalance=rs=-0.08:gs=0.01:bs=0.14:rm=-0.04:bm=0.05,eq=saturation=1.06" },
+      { id:"vignette", label:"暗角", css:"", ff:"vignette=PI/5", fx:"vignette" }
+    ];
+    function filterById(id){ for (var i=0;i<FILTERS.length;i++) if (FILTERS[i].id===id) return FILTERS[i]; return FILTERS[0]; }
+    function cropRatioVal(id){
+      if (id === "16:9") return 16/9; if (id === "9:16") return 9/16; if (id === "1:1") return 1;
+      return 0; // orig
+    }
+    /* 片段新属性默认值；分割/复制都从这里或源片段完整继承 */
+    function clipPropsBase(){
+      return { speed:1, filter:"none", cropRatio:"orig", cropPos:"mid", zoom:"none", reverse:false, enhance:false };
+    }
+    function copyClipProps(c){
+      return { speed:c.speed || 1, filter:c.filter || "none", cropRatio:c.cropRatio || "orig",
+        cropPos:c.cropPos || "mid", zoom:c.zoom || "none", reverse:!!c.reverse, enhance:!!c.enhance };
+    }
+    var state = {
+      media: [],        // {id,file,url,name,duration,vw,vh,thumb,rot}
+      clips: [],        // {id,mediaId,inn,out,volume,muted,rot,speed,filter,cropRatio,cropPos,zoom,reverse,enhance}
+      audios: [],       // {id,name,blob,url,duration,fromName}
+      bgm: null,        // {audioId, mode:'mix'|'replace', volume:0..1}
+      project: { aspect:"orig", border:"none", enhanceAll:false,
+        subtitle:{ size:0.05, color:"#ffffff", bg:true } },
+      overlays: [],     // {id,kind:'sticker'|'text',emoji,imgBlob,imgUrl,text,color,size,x,y,start,end}
+      subtitles: [],    // {id,text,start,end} —— 底部居中字幕，样式走 project.subtitle
+      selectedClipId: null,
+      selectedOverlayId: null,
+      selectedSubtitleId: null,
+      activeTool: null,
+      activeTab: "clip",
+      sortMode: false,
+      playhead: 0,
+      pxPerSec: 26,
+      playing: false
+    };
+    var pendingAction = null; // {type:'insert',index} | {type:'replace',clipId} —— 文件选择回来后执行
+    function mediaById(id){ for (var i=0;i<state.media.length;i++) if (state.media[i].id===id) return state.media[i]; return null; }
+    function clipById(id){ for (var i=0;i<state.clips.length;i++) if (state.clips[i].id===id) return state.clips[i]; return null; }
+    function audioById(id){ for (var i=0;i<state.audios.length;i++) if (state.audios[i].id===id) return state.audios[i]; return null; }
+    function overlayById(id){ for (var i=0;i<state.overlays.length;i++) if (state.overlays[i].id===id) return state.overlays[i]; return null; }
+    function subtitleById(id){ for (var i=0;i<state.subtitles.length;i++) if (state.subtitles[i].id===id) return state.subtitles[i]; return null; }
+    /* ★ 有效时长口径：时间线上一律 (out-inn)/speed，分割/入出点/总时长/导出共用 */
+    function srcDur(c){ return Math.max(0, c.out - c.inn); }
+    function clipDur(c){ return srcDur(c) / (c.speed || 1); }
+    function totalDur(){ var s=0; for (var i=0;i<state.clips.length;i++) s+=clipDur(state.clips[i]); return s; }
+    function clipStart(idx){ var s=0; for (var i=0;i<idx;i++) s+=clipDur(state.clips[i]); return s; }
+    function fmt(t){
+      if (!isFinite(t) || t<0) t=0;
+      var m=Math.floor(t/60), s=t-m*60;
+      return m + ":" + (s<10?"0":"") + s.toFixed(1);
+    }
+    function fmtClock(t){
+      if (!isFinite(t) || t<0) t=0;
+      var m=Math.floor(t/60), s=Math.floor(t-m*60);
+      return (m<10?"0":"") + m + ":" + (s<10?"0":"") + s;
+    }
+    function fmtSeg(t){ return (Math.round(t*10)/10).toFixed(1) + "S"; }
+    var toastTimer=null;
+    function toast(msg){
+      var el=$("toast"); el.textContent=msg; el.classList.add("on");
+      clearTimeout(toastTimer); toastTimer=setTimeout(function(){ el.classList.remove("on"); }, 2400);
+    }
+    /* 通用确认框（倒放长片段等风险确认用） */
+    var cfCb = null;
+    function showConfirm(title, text, onOk){
+      $("cfTitle").textContent = title; $("cfText").textContent = text;
+      cfCb = onOk; $("confirmOverlay").classList.add("on");
+    }
+    $("cfCancel").addEventListener("click", function(){ $("confirmOverlay").classList.remove("on"); cfCb = null; });
+    $("cfOk").addEventListener("click", function(){
+      $("confirmOverlay").classList.remove("on");
+      var f = cfCb; cfCb = null; if (f) f();
+    });
+    </script>
+    <script>
+    "use strict";
+    /* ================= 素材导入 ================= */
+    var fileInput = $("fileInput");
+    $("btnImport").addEventListener("click", function(){ pendingAction = null; fileInput.click(); });
+    $("btnImportTop").addEventListener("click", function(){ pendingAction = null; fileInput.click(); });
+    fileInput.addEventListener("change", function(){
+      var files = Array.prototype.slice.call(fileInput.files || []);
+      fileInput.value = "";
+      if (!files.length){ pendingAction = null; return; }
+      importFiles(files).then(function(newIds){
+        var pa = pendingAction; pendingAction = null;
+        if (!pa || !newIds.length) return;
+        if (pa.type === "insert"){
+          var firstId = null;
+          newIds.forEach(function(mid, j){
+            var c = makeClip(mid);
+            if (c){ state.clips.splice(pa.index + j, 0, c); if (!firstId) firstId = c.id; }
+          });
+          if (firstId){
+            state.selectedClipId = firstId;
+            renderTimeline(); renderClipPanel(); renderSegments(); refreshExportBtn();
+            showAt(state.playhead, false);
+            toast("已插入 " + newIds.length + " 段视频");
+          }
+        } else if (pa.type === "replace"){
+          var c2 = clipById(pa.clipId);
+          if (c2) replaceClipMedia(c2, newIds[0]);
+        }
+      });
+    });
+    function makeClip(mediaId){
+      var m = mediaById(mediaId); if (!m || !m.duration) return null;
+      var c = { id:uid(), mediaId:mediaId, inn:0, out:m.duration, volume:1, muted:false, rot:(m.rot || 0) };
+      var base = clipPropsBase(); for (var k in base) c[k] = base[k];
+      return c;
+    }
+    function probeVideo(url){
+      return new Promise(function(res){
+        var v = document.createElement("video");
+        v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
+        var done = false;
+        function finish(o){ if (!done){ done = true; res(o); } }
+        v.addEventListener("loadedmetadata", function(){
+          var dur = v.duration || 0, vw = v.videoWidth || 0, vh = v.videoHeight || 0;
+          if (!dur || !isFinite(dur)){ finish({duration:dur||0, vw:vw, vh:vh, thumb:""}); return; }
+          var t = Math.min(Math.max(dur * 0.25, 0.05), Math.max(dur - 0.05, 0.05));
+          var onSeek = function(){
+            v.removeEventListener("seeked", onSeek);
+            var thumb = "";
+            try {
+              var c = document.createElement("canvas");
+              c.width = 148; c.height = Math.max(2, Math.round(148 * vh / Math.max(vw,1)));
+              c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+              thumb = c.toDataURL("image/jpeg", 0.72);
+            } catch(e){}
+            finish({duration:dur, vw:vw, vh:vh, thumb:thumb});
+          };
+          v.addEventListener("seeked", onSeek);
+          try { v.currentTime = t; } catch(e){ onSeek(); }
+          setTimeout(function(){ finish({duration:dur, vw:vw, vh:vh, thumb:""}); }, 2500);
+        });
+        v.addEventListener("error", function(){ finish({duration:0, vw:0, vh:0, thumb:""}); });
+        setTimeout(function(){ finish({duration:0, vw:0, vh:0, thumb:""}); }, 6000);
+      });
+    }
+
+    async function importFiles(files){
+      var addedIds = [];
+      for (var i=0;i<files.length;i++){
+        var f = files[i];
+        if (f.type && f.type.indexOf("video/") !== 0 && !/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)) continue;
+        var url = URL.createObjectURL(f);
+        var meta = await probeVideo(url);
+        var m = { id:uid(), file:f, url:url, name:f.name, duration:meta.duration, vw:meta.vw, vh:meta.vh, thumb:meta.thumb, rot:0 };
+        state.media.push(m);
+        addedIds.push(m.id);
+        if (m.duration > 0) ensureFrames(m);
+        renderMedia();
+      }
+      if (addedIds.length) toast("已导入 " + addedIds.length + " 个视频素材");
+      else toast("没能导入所选文件，请换 MP4/MOV/WebM 试试");
+      return addedIds;
+    }
+
+    function renderMedia(){
+      var list = $("mediaList"); list.innerHTML = "";
+      $("mediaEmpty").style.display = state.media.length ? "none" : "block";
+      state.media.forEach(function(m){
+        var row = document.createElement("div"); row.className = "media-item";
+        var img = document.createElement("img"); img.alt = ""; if (m.thumb) img.src = m.thumb;
+        var meta = document.createElement("div"); meta.className = "meta";
+        var nm = document.createElement("div"); nm.className = "name"; nm.textContent = m.name;
+        var sub = document.createElement("div"); sub.className = "sub";
+        sub.textContent = "时长 " + fmt(m.duration) + (m.vw ? " · " + m.vw + "×" + m.vh : "") + (m.rot ? " · 预设旋转 " + m.rot + "°" : "");
+        meta.appendChild(nm); meta.appendChild(sub);
+        var acts = document.createElement("div"); acts.className = "acts";
+        var bAdd = document.createElement("button"); bAdd.className = "btn small blue"; bAdd.textContent = "加入时间线";
+        bAdd.addEventListener("click", function(){ addToTimeline(m.id); });
+        var bExt = document.createElement("button"); bExt.className = "btn small"; bExt.textContent = "提取音频";
+        bExt.addEventListener("click", function(){ extractAudio(m.id); });
+        var bRot = document.createElement("button"); bRot.className = "btn small"; bRot.textContent = "预设旋转 ↻";
+        bRot.addEventListener("click", function(){
+          m.rot = ((m.rot || 0) + 90) % 360;
+          renderMedia();
+          toast(m.rot ? "已预设旋转 " + m.rot + "°，加入时间线时生效" : "已取消预设旋转");
+        });
+        acts.appendChild(bAdd); acts.appendChild(bExt); acts.appendChild(bRot);
+        row.appendChild(img); row.appendChild(meta); row.appendChild(acts);
+        list.appendChild(row);
+      });
+    }
+
+    function addToTimeline(mediaId){
+      var c = makeClip(mediaId);
+      if (!c){ toast("这个素材读不到时长，无法加入"); return; }
+      state.clips.push(c);
+      state.selectedClipId = c.id;
+      renderTimeline(); renderClipPanel(); renderSegments(); refreshExportBtn();
+      toast("已加入时间线");
+    }
+
+    /* ================= 胶片帧抽取（离屏 video+canvas，按间隔抽帧并缓存） ================= */
+    var frameCache = {};   // mediaId -> {step, imgs:{k:Image}, done}
+    var frameQueue = [], frameBusy = false;
+    var frameVideo = document.createElement("video");
+    frameVideo.muted = true; frameVideo.playsInline = true; frameVideo.preload = "auto";
+    function ensureFrames(m){
+      if (!m || frameCache[m.id] || !m.duration) return;
+      var step = m.duration > 200 ? Math.ceil(m.duration / 200) : 1;
+      frameCache[m.id] = { step:step, imgs:{}, done:false };
+      frameQueue.push(m);
+      processFrameQueue();
+    }
+    function processFrameQueue(){
+      if (frameBusy) return;
+      var m = frameQueue.shift();
+      if (!m){ return; }
+      frameBusy = true;
+      genFrames(m).then(function(){
+        frameBusy = false;
+        repaintClipsOf(m.id);
+        processFrameQueue();
+      });
+    }
+    function seekFrame(v, t){
+      return new Promise(function(res){
+        var done = false;
+        function fin(){ if (!done){ done = true; v.removeEventListener("seeked", fin); res(); } }
+        v.addEventListener("seeked", fin);
+        try { v.currentTime = t; } catch(e){ fin(); }
+        setTimeout(fin, 1500);
+      });
+    }
+    async function genFrames(m){
+      var fc = frameCache[m.id]; if (!fc) return;
+      var cv = document.createElement("canvas"); cv.width = 104; cv.height = 58;
+      var cx = cv.getContext("2d");
+      frameVideo.src = m.url;
+      await new Promise(function(res){
+        if (frameVideo.readyState >= 1) return res();
+        frameVideo.addEventListener("loadedmetadata", function h(){ frameVideo.removeEventListener("loadedmetadata", h); res(); });
+        setTimeout(res, 3000);
+      });
+      var vw = frameVideo.videoWidth || m.vw || 16, vh = frameVideo.videoHeight || m.vh || 9;
+      var n = 0;
+      for (var t = fc.step / 2; t < m.duration; t += fc.step){
+        await seekFrame(frameVideo, Math.min(t, m.duration - 0.05));
+        try {
+          var sc = Math.max(104 / vw, 58 / vh);
+          var dw = vw * sc, dh = vh * sc;
+          cx.fillStyle = "#26272c"; cx.fillRect(0, 0, 104, 58);
+          cx.drawImage(frameVideo, (104 - dw) / 2, (58 - dh) / 2, dw, dh);
+          var img = new Image();
+          img.src = cv.toDataURL("image/jpeg", 0.62);
+          fc.imgs[Math.floor(t / fc.step)] = img;
+        } catch(e){}
+        if (++n % 8 === 0) repaintClipsOf(m.id);
+      }
+      fc.done = true;
+    }
+    function repaintClipsOf(mediaId){
+      var els = document.querySelectorAll('.clip[data-mid="' + mediaId + '"]');
+      els.forEach(function(el){
+        var c = clipById(el.getAttribute("data-cid"));
+        var cv = el.querySelector("canvas.film");
+        if (c && cv) paintFilmstrip(c, cv);
+      });
+    }
+    /* 把片段源区间 [inn,out] 的缓存帧按有效时长（/speed）铺满片段画布 */
+    function paintFilmstrip(c, cv){
+      var ctx = cv.getContext("2d");
+      var W = cv.width, H = cv.height;
+      ctx.fillStyle = "#26272c"; ctx.fillRect(0, 0, W, H);
+      var m = mediaById(c.mediaId); if (!m) return;
+      var fc = frameCache[m.id];
+      var thumbImg = thumbImageOf(m);
+      function drawCover(img, x, w){
+        if (!img || !img.complete || !img.naturalWidth) return;
+        var sc = Math.max(w / img.naturalWidth, H / img.naturalHeight);
+        var dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
+        ctx.save(); ctx.beginPath(); ctx.rect(x, 0, w, H); ctx.clip();
+        ctx.drawImage(img, x + (w - dw) / 2, (H - dh) / 2, dw, dh);
+        ctx.restore();
+      }
+      if (!fc){ if (thumbImg) drawCover(thumbImg, 0, W); return; }
+      var speed = c.speed || 1;
+      var k0 = Math.floor(c.inn / fc.step), k1 = Math.floor(Math.max(c.inn, c.out - 0.001) / fc.step);
+      for (var k = k0; k <= k1; k++){
+        var sFrom = Math.max(c.inn, k * fc.step), sTo = Math.min(c.out, (k + 1) * fc.step);
+        if (sTo <= sFrom) continue;
+        var x = (sFrom - c.inn) / speed * state.pxPerSec;
+        var w = (sTo - sFrom) / speed * state.pxPerSec;
+        var img = fc.imgs[k];
+        if (img && img.complete && img.naturalWidth) drawCover(img, x, Math.max(w + 1, 2));
+        else if (thumbImg) drawCover(thumbImg, x, Math.max(w + 1, 2));
+      }
+    }
+    var thumbImgs = {};
+    function thumbImageOf(m){
+      if (!m.thumb) return null;
+      if (!thumbImgs[m.id]){
+        var im = new Image(); im.src = m.thumb; thumbImgs[m.id] = im;
+      }
+      return thumbImgs[m.id];
+    }
+
+    /* ================= 音频库 / 背景音乐 ================= */
+    function renderAudios(){
+      var list = $("audioList"); list.innerHTML = "";
+      $("audioEmpty").style.display = state.audios.length ? "none" : "block";
+      state.audios.forEach(function(a){
+        var row = document.createElement("div"); row.className = "audio-item";
+        var ico = document.createElement("div"); ico.className = "a-ico";
+        ico.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>';
+        var meta = document.createElement("div"); meta.className = "meta";
+        var nm = document.createElement("div"); nm.className = "name"; nm.textContent = a.name;
+        var sub = document.createElement("div"); sub.className = "sub";
+        sub.textContent = "来自：" + a.fromName + (a.duration ? " · " + fmt(a.duration) : "");
+        var au = document.createElement("audio"); au.controls = true; au.preload = "metadata"; au.src = a.url;
+        var row2 = document.createElement("div"); row2.className = "row2";
+        var bDl = document.createElement("button"); bDl.className = "btn small"; bDl.textContent = "下载音频";
+        bDl.addEventListener("click", function(){ downloadBlob(a.blob, a.name); });
+        var bBg = document.createElement("button"); bBg.className = "btn small blue"; bBg.textContent = "设为背景音乐";
+        bBg.addEventListener("click", function(){ setBgm(a.id); });
+        row2.appendChild(bDl); row2.appendChild(bBg);
+        meta.appendChild(nm); meta.appendChild(sub); meta.appendChild(au); meta.appendChild(row2);
+        row.appendChild(ico); row.appendChild(meta);
+        list.appendChild(row);
+      });
+      renderBgmUI();
+    }
+    function downloadBlob(blob, filename){
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    }
+    /* 导入音频文件作为 BGM 来源 */
+    $("btnImportAudio").addEventListener("click", function(){ $("audioInput").click(); });
+    $("audioInput").addEventListener("change", function(){
+      var f = (this.files || [])[0]; this.value = "";
+      if (!f) return;
+      var entry = { id:uid(), name:f.name, blob:f, url:URL.createObjectURL(f), duration:0, fromName:"导入的音频文件" };
+      state.audios.push(entry);
+      probeAudioDur(entry);
+      renderAudios();
+      toast("音频已导入，可在下方设为背景音乐");
+    });
+    function probeAudioDur(entry){
+      var a = new Audio();
+      a.preload = "metadata"; a.src = entry.url;
+      a.addEventListener("loadedmetadata", function(){ entry.duration = a.duration || 0; renderAudios(); });
+    }
+    function setBgm(audioId){
+      state.bgm = { audioId:audioId, mode: (state.bgm ? state.bgm.mode : "mix"), volume: (state.bgm ? state.bgm.volume : 0.5) };
+      syncBgmPreview(true);
+      renderBgmUI();
+      toast("已设为背景音乐，导出时生效");
+    }
+    function clearBgm(){
+      state.bgm = null;
+      var ba = $("bgmAudio"); ba.pause(); ba.removeAttribute("src");
+      renderBgmUI();
+    }
+    function renderBgmUI(){
+      var has = !!state.bgm;
+      var a = has ? audioById(state.bgm.audioId) : null;
+      if (has && !a){ state.bgm = null; has = false; }
+      $("bgmStrip").classList.toggle("on", has);
+      $("bgmBox").style.display = has ? "block" : "none";
+      if (has){
+        $("bgmName").textContent = a.name;
+        $("bgmModeLbl").textContent = state.bgm.mode === "mix" ? "混合原声" : "替换原声";
+        $("bgmCurName").textContent = a.name;
+        $("bgmVol").value = Math.round(state.bgm.volume * 100);
+        $("bgmVolVal").textContent = Math.round(state.bgm.volume * 100) + "%";
+        var seg = $("bgmModeSeg").children;
+        for (var i=0;i<seg.length;i++) seg[i].classList.toggle("on", seg[i].getAttribute("data-mode") === state.bgm.mode);
+        $("tabAudio").querySelector("span").innerHTML = '音频<span class="dot"></span>';
+      } else {
+        $("tabAudio").querySelector("span").textContent = "音频";
+      }
+      $("enhGlobalVal").textContent = state.project.enhanceAll ? "开" : "关";
+      $("btnEnhGlobal").textContent = state.project.enhanceAll ? "关闭原声增强" : "开启原声增强";
+    }
+    $("bgmModeSeg").addEventListener("click", function(e){
+      var b = e.target.closest("button"); if (!b || !state.bgm) return;
+      state.bgm.mode = b.getAttribute("data-mode");
+      renderBgmUI(); applyPreviewAudio();
+    });
+    $("bgmVol").addEventListener("input", function(){
+      if (!state.bgm) return;
+      state.bgm.volume = this.value / 100;
+      $("bgmVolVal").textContent = this.value + "%";
+      $("bgmAudio").volume = state.bgm.volume;
+    });
+    $("bgmRemove").addEventListener("click", clearBgm);
+    $("bgmStripOff").addEventListener("click", clearBgm);
+    $("bgmStripEdit").addEventListener("click", function(){ switchTab("audio"); });
+    $("btnEnhGlobal").addEventListener("click", function(){
+      state.project.enhanceAll = !state.project.enhanceAll;
+      renderBgmUI();
+      toast(state.project.enhanceAll ? "原声增强已开启（导出生效）" : "原声增强已关闭");
+    });
+
+    /* ================= 页签 ================= */
+    function switchTab(name){
+      state.activeTab = name;
+      var tabs = document.querySelectorAll(".tabbar button");
+      tabs.forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-tab") === name); });
+      ["clip","seg","audio","media"].forEach(function(n){ $("panel-" + n).classList.toggle("on", n === name); });
+      if (name === "seg") renderSegments();
+    }
+    document.querySelector(".tabbar").addEventListener("click", function(e){
+      var b = e.target.closest("button"); if (b) switchTab(b.getAttribute("data-tab"));
+    });
+
+    /* ================= 画幅 / 边框（工程级） ================= */
+    function aspectRatioVal(){
+      var a = state.project.aspect;
+      if (a === "orig") return 0;
+      var p = a.split(":"); return parseFloat(p[0]) / parseFloat(p[1]);
+    }
+    function renderFrameUI(){
+      var ac = $("aspectChips"); ac.innerHTML = "";
+      ASPECTS.forEach(function(a){
+        var b = document.createElement("button");
+        b.className = "chip" + (state.project.aspect === a.id ? " on" : "");
+        b.textContent = a.label;
+        b.addEventListener("click", function(){
+          state.project.aspect = a.id;
+          renderFrameUI(); layoutPreview();
+        });
+        ac.appendChild(b);
+      });
+      var bc = $("borderChips"); bc.innerHTML = "";
+      BORDERS.forEach(function(a){
+        var b = document.createElement("button");
+        b.className = "chip" + (state.project.border === a.id ? " on" : "");
+        b.textContent = a.label;
+        b.addEventListener("click", function(){
+          state.project.border = a.id;
+          renderFrameUI(); layoutPreview();
+        });
+        bc.appendChild(b);
+      });
+      var al = "原始";
+      ASPECTS.forEach(function(a){ if (a.id === state.project.aspect) al = a.label; });
+      $("frameCapVal").textContent = al;
+      var bl = "无";
+      BORDERS.forEach(function(a){ if (a.id === state.project.border) bl = a.label.replace("（黑边）",""); });
+      $("borderCapVal").textContent = bl;
+    }
+    $("btnFrame").addEventListener("click", function(){ $("framePanel").classList.toggle("on"); });
+    $("btnBorderCap").addEventListener("click", function(){ $("framePanel").classList.toggle("on"); });
+    $("btnRotateCap").addEventListener("click", function(){ rotateSelectedClip(1, true); });
+    /* 返回：优先退出排序模式，其次取消覆盖层/片段选择 */
+    $("btnBack").addEventListener("click", function(){
+      if (state.sortMode){ setSortMode(false); return; }
+      if (state.selectedOverlayId){ state.selectedOverlayId = null; renderOverlays(); renderOvEdit(); return; }
+      if (state.selectedClipId){
+        state.selectedClipId = null;
+        renderTimelineSelection(); renderClipPanel(); renderSegments();
+        return;
+      }
+      toast("已在视频编辑页");
+    });
+    /* 排序模式 */
+    function setSortMode(on){
+      state.sortMode = on;
+      $("sortBar").classList.toggle("on", on);
+      $("btnSort").classList.toggle("on", on);
+    }
+    $("btnSort").addEventListener("click", function(){
+      if (!state.clips.length){ toast("先把素材加入时间线"); return; }
+      setSortMode(!state.sortMode);
+    });
+    $("btnSortDone").addEventListener("click", function(){ setSortMode(false); });
+    $("btnSortL").addEventListener("click", function(){ moveClip(-1); });
+    $("btnSortR").addEventListener("click", function(){ moveClip(1); });
+    </script>
+
+    <script>
+    "use strict";
+    /* ================= 时间线渲染（胶片条 + 中央固定播放头） ================= */
+    var tlScroll = $("tlScroll"), tlInner = $("tlInner"), ruler = $("ruler"), track = $("track");
+    var TL_PAD = 60;
+    function syncTlPad(){
+      TL_PAD = Math.max(40, Math.round(tlScroll.clientWidth / 2));
+      tlInner.style.paddingLeft = TL_PAD + "px";
+      tlInner.style.paddingRight = TL_PAD + "px";
+    }
+    function clipBadges(c){
+      var s = "";
+      if (c.reverse) s += '<i>倒放</i>';
+      if ((c.speed || 1) !== 1) s += '<i>' + (c.speed) + '×</i>';
+      var f = filterById(c.filter || "none");
+      if (f.id !== "none") s += '<i class="dim">' + f.label + '</i>';
+      if (c.zoom && c.zoom !== "none") s += '<i class="dim">' + (c.zoom === "in" ? "推镜" : "拉镜") + '</i>';
+      if (c.muted) s += '<i class="dim">静音</i>';
+      return s;
+    }
+    function renderTimeline(){
+      syncTlPad();
+      var tot = totalDur();
+      var w = Math.max(tot * state.pxPerSec, tlScroll.clientWidth - TL_PAD * 2);
+      tlInner.style.width = (w + TL_PAD * 2) + "px";
+      // 标尺：秒数刻度 12S 13S…
+      ruler.innerHTML = "";
+      var step = 1;
+      var steps = [1,2,5,10,15,30,60,120];
+      for (var si=0; si<steps.length; si++){ if (steps[si] * state.pxPerSec >= 52){ step = steps[si]; break; } step = steps[si]; }
+      var maxT = Math.ceil(w / state.pxPerSec);
+      for (var t=0; t<=maxT; t+=step){
+        var tick = document.createElement("div"); tick.className = "tick";
+        tick.style.left = (t * state.pxPerSec) + "px";
+        var sp = document.createElement("span"); sp.textContent = t + "S";
+        tick.appendChild(sp); ruler.appendChild(tick);
+      }
+      // 片段（胶片条）
+      track.innerHTML = "";
+      if (!state.clips.length){
+        var em = document.createElement("div"); em.className = "track-empty";
+        em.textContent = "时间线是空的 · 在「素材」里把视频加入时间线";
+        // 空状态下内容区被左右半屏留白挤到 0 宽，提示框改为覆盖整个可视宽度横排显示
+        em.style.left = (-TL_PAD + 8) + "px";
+        em.style.width = Math.max(tlScroll.clientWidth - 16, 160) + "px";
+        track.appendChild(em);
+      }
+      var x = 0;
+      state.clips.forEach(function(c){
+        var m = mediaById(c.mediaId);
+        var d = clipDur(c);
+        var wpx = Math.max(d * state.pxPerSec, 8);
+        var el = document.createElement("div");
+        el.className = "clip" + (c.id === state.selectedClipId ? " sel" : "");
+        el.style.left = x + "px";
+        el.style.width = wpx + "px";
+        el.setAttribute("data-cid", c.id);
+        el.setAttribute("data-mid", c.mediaId);
+        var cv = document.createElement("canvas");
+        cv.className = "film";
+        cv.width = Math.max(2, Math.round(wpx)); cv.height = 58;
+        el.appendChild(cv);
+        var shade = document.createElement("div"); shade.className = "shade"; el.appendChild(shade);
+        var cutL = document.createElement("div"); cutL.className = "cut l"; el.appendChild(cutL);
+        var cutR = document.createElement("div"); cutR.className = "cut r"; el.appendChild(cutR);
+        var cd = document.createElement("div"); cd.className = "cdur";
+        cd.textContent = fmt(d) + ((c.rot || 0) ? " · ↻" + c.rot + "°" : "");
+        el.appendChild(cd);
+        var bg = document.createElement("div"); bg.className = "cbadges"; bg.innerHTML = clipBadges(c); el.appendChild(bg);
+        var cn = document.createElement("div"); cn.className = "cname"; cn.textContent = m ? m.name : "素材"; el.appendChild(cn);
+        paintCutMarks(el, c);
+        var hl = document.createElement("div"); hl.className = "handle l"; hl.setAttribute("data-h", "l"); el.appendChild(hl);
+        var hr = document.createElement("div"); hr.className = "handle r"; hr.setAttribute("data-h", "r"); el.appendChild(hr);
+        attachClipGestures(el, c);
+        track.appendChild(el);
+        paintFilmstrip(c, cv);
+        x += d * state.pxPerSec;
+      });
+      updatePlayheadUI();
+      $("tTot").textContent = fmtClock(tot);
+      $("previewEmpty").style.display = state.clips.length ? "none" : "flex";
+    }
+
+    /* 入点/出点标记：片段源素材被裁掉的部分在胶片条两端画阴影（按源时长同比例，最宽 45%） */
+    function paintCutMarks(el, c){
+      var l = el.querySelector(".cut.l"), r = el.querySelector(".cut.r");
+      if (!l || !r) return;
+      var m = mediaById(c.mediaId); if (!m || !m.duration){ l.style.width = "0px"; r.style.width = "0px"; return; }
+      var wpx = Math.max(clipDur(c) * state.pxPerSec, 8);
+      var speed = c.speed || 1;
+      l.style.width = Math.min(c.inn / speed * state.pxPerSec, wpx * 0.45) + "px";
+      r.style.width = Math.min((m.duration - c.out) / speed * state.pxPerSec, wpx * 0.45) + "px";
+    }
+
+    /* 裁剪/变速时原地更新布局，避免重建 DOM 打断手势 */
+    function layoutClips(){
+      var x = 0;
+      state.clips.forEach(function(c){
+        var el = track.querySelector('[data-cid="' + c.id + '"]');
+        var d = clipDur(c);
+        var wpx = Math.max(d * state.pxPerSec, 8);
+        if (el){
+          el.style.left = x + "px";
+          el.style.width = wpx + "px";
+          var cd = el.querySelector(".cdur"); if (cd) cd.textContent = fmt(d) + ((c.rot || 0) ? " · ↻" + c.rot + "°" : "");
+          var cv = el.querySelector("canvas.film");
+          if (cv && cv.width !== Math.round(wpx)){ cv.width = Math.max(2, Math.round(wpx)); }
+          if (cv) paintFilmstrip(c, cv);
+          paintCutMarks(el, c);
+        }
+        x += d * state.pxPerSec;
+      });
+      var tot = totalDur();
+      var w = Math.max(tot * state.pxPerSec, tlScroll.clientWidth - TL_PAD * 2);
+      tlInner.style.width = (w + TL_PAD * 2) + "px";
+      $("tTot").textContent = fmtClock(tot);
+      updatePlayheadUI();
+    }
+
+    function updatePlayheadUI(){
+      $("tCur").textContent = fmtClock(state.playhead);
+    }
+    function refreshExportBtn(){ $("btnExport").disabled = !state.clips.length; }
+
+    function setPlayhead(t, preview){
+      var tot = totalDur();
+      state.playhead = Math.max(0, Math.min(t, tot));
+      updatePlayheadUI();
+      centerScrollOnPlayhead();
+      if (window.updateEditBar) window.updateEditBar();
+      if (preview !== false) showAt(state.playhead, state.playing);
+      renderOvVisibility();
+    }
+    /* 红针固定中央：靠滚动让 playhead 时刻对准容器中心 */
+    function centerScrollOnPlayhead(){
+      tlScroll.scrollLeft = state.playhead * state.pxPerSec;
+    }
+    /* 用户滚动时间线 → 播放头跟随针下时刻（程序滚动时 playhead 已对齐，差值≈0 自动跳过） */
+    var scrollRaf = 0;
+    tlScroll.addEventListener("scroll", function(){
+      var t = tlScroll.scrollLeft / state.pxPerSec;
+      if (Math.abs(t - state.playhead) < 0.6 / state.pxPerSec) return;
+      state.playhead = Math.max(0, Math.min(t, totalDur()));
+      updatePlayheadUI();
+      if (window.updateEditBar) window.updateEditBar();
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(function(){
+        scrollRaf = 0;
+        if (!state.playing) showAt(state.playhead, false);
+        renderOvVisibility();
+      });
+    });
+
+    /* 标尺点按/拖动定位 */
+    (function(){
+      var scrubbing = false;
+      function posToTime(e){
+        var r = ruler.getBoundingClientRect();
+        return Math.max(0, (e.clientX - r.left) / state.pxPerSec);
+      }
+      ruler.addEventListener("pointerdown", function(e){
+        scrubbing = true; ruler.setPointerCapture(e.pointerId);
+        setPlayhead(posToTime(e));
+      });
+      ruler.addEventListener("pointermove", function(e){ if (scrubbing) setPlayhead(posToTime(e)); });
+      ruler.addEventListener("pointerup", function(){ scrubbing = false; });
+      /* 拖中央红针 = 反向拖动时间线 */
+      var grab = $("playheadGrab"), gDrag = false, gStartX = 0, gStartScroll = 0;
+      grab.addEventListener("pointerdown", function(e){
+        gDrag = true; gStartX = e.clientX; gStartScroll = tlScroll.scrollLeft;
+        grab.setPointerCapture(e.pointerId); e.preventDefault();
+      });
+      grab.addEventListener("pointermove", function(e){
+        if (!gDrag) return;
+        tlScroll.scrollLeft = gStartScroll - (e.clientX - gStartX);
+      });
+      grab.addEventListener("pointerup", function(){ gDrag = false; });
+    })();
+
+    /* 缩放：按钮 + 滚轮 + 双指 */
+    function setZoom(px){
+      state.pxPerSec = Math.max(4, Math.min(140, px));
+      renderTimeline();
+      centerScrollOnPlayhead();
+    }
+    $("zoomIn").addEventListener("click", function(){ setZoom(state.pxPerSec * 1.4); });
+    $("zoomOut").addEventListener("click", function(){ setZoom(state.pxPerSec / 1.4); });
+    tlScroll.addEventListener("wheel", function(e){
+      if (e.ctrlKey || e.metaKey){
+        e.preventDefault();
+        setZoom(state.pxPerSec * (e.deltaY < 0 ? 1.13 : 1 / 1.13));
+      } else if (Math.abs(e.deltaY) > Math.abs(e.deltaX)){
+        tlScroll.scrollLeft += e.deltaY;
+      }
+    }, { passive:false });
+    (function(){
+      var pointers = {}, pinchD = 0;
+      tlScroll.addEventListener("pointerdown", function(e){ pointers[e.pointerId] = e.clientX; if (Object.keys(pointers).length === 2){ var ks = Object.keys(pointers); pinchD = Math.abs(pointers[ks[0]] - pointers[ks[1]]); } });
+      tlScroll.addEventListener("pointermove", function(e){
+        if (!(e.pointerId in pointers)) return;
+        pointers[e.pointerId] = e.clientX;
+        if (Object.keys(pointers).length === 2){
+          var ks = Object.keys(pointers); var d = Math.abs(pointers[ks[0]] - pointers[ks[1]]);
+          if (pinchD > 0 && Math.abs(d - pinchD) > 6){ setZoom(state.pxPerSec * (d / pinchD)); pinchD = d; }
+        }
+      });
+      function up(e){ delete pointers[e.pointerId]; }
+      tlScroll.addEventListener("pointerup", up);
+      tlScroll.addEventListener("pointercancel", up);
+    })();
+
+    /* 拖边缘裁剪时跟随指针的入点/出点时间浮签 */
+    function showTrimTip(e, text){
+      var tip = $("trimTip");
+      tip.textContent = text; tip.style.display = "block";
+      tip.style.left = Math.max(4, Math.min(e.clientX + 14, window.innerWidth - 200)) + "px";
+      tip.style.top = Math.max(8, e.clientY - 42) + "px";
+    }
+    function hideTrimTip(){ $("trimTip").style.display = "none"; }
+
+    /* 片段手势：点选 / 拖把手裁剪（改源区间，时长按 /speed 换算） / 排序（鼠标直接拖，触摸长按拖） */
+    function attachClipGestures(el, clip){
+      var startX = 0, mode = null, longTimer = null, moved = false, origIn = 0, origOut = 0, startIdx = 0, startScroll = 0, isMouse = false;
+      el.addEventListener("pointerdown", function(e){
+        var h = e.target.closest(".handle");
+        isMouse = e.pointerType === "mouse";
+        state.selectedClipId = clip.id;
+        renderTimelineSelection(); renderClipPanel(); renderSegments();
+        startX = e.clientX; moved = false; startScroll = tlScroll.scrollLeft;
+        origIn = clip.inn; origOut = clip.out;
+        if (h){
+          mode = h.getAttribute("data-h") === "l" ? "trimL" : "trimR";
+          el.setPointerCapture(e.pointerId); e.preventDefault();
+          return;
+        }
+        mode = "maybe";
+        try { el.setPointerCapture(e.pointerId); } catch(err){}
+        longTimer = setTimeout(function(){
+          if (mode === "maybe"){
+            mode = "drag";
+            startIdx = state.clips.indexOf(clip);
+            el.classList.add("dragging");
+            if (navigator.vibrate) navigator.vibrate(15);
+          }
+        }, 380);
+      });
+      el.addEventListener("pointermove", function(e){
+        if (!mode) return;
+        var dx = e.clientX - startX;
+        if (Math.abs(dx) > 6) moved = true;
+        if (mode === "maybe"){
+          if (moved && isMouse){
+            clearTimeout(longTimer);
+            mode = "drag"; startIdx = state.clips.indexOf(clip);
+            el.classList.add("dragging");
+          } else if (moved){
+            clearTimeout(longTimer); tlScroll.scrollLeft = startScroll - dx;
+          }
+          if (mode !== "drag") return;
+        }
+        var m = mediaById(clip.mediaId); if (!m) return;
+        var ds = dx / state.pxPerSec * (clip.speed || 1); // 屏幕位移 → 源秒数
+        if (mode === "trimL"){
+          clip.inn = Math.max(0, Math.min(origIn + ds, clip.out - 0.2));
+          layoutClips(); showAt(state.playhead, false);
+          showTrimTip(e, "入点 " + fmt(clip.inn) + " · 片段长 " + fmt(clipDur(clip)));
+        } else if (mode === "trimR"){
+          clip.out = Math.min(m.duration, Math.max(origOut + ds, clip.inn + 0.2));
+          layoutClips(); showAt(state.playhead, false);
+          showTrimTip(e, "出点 " + fmt(clip.out) + " · 片段长 " + fmt(clipDur(clip)));
+        } else if (mode === "drag"){
+          el.style.transform = "translateX(" + dx + "px)";
+        }
+      });
+      function end(e){
+        hideTrimTip();
+        if (longTimer) clearTimeout(longTimer);
+        if (mode === "drag"){
+          el.style.transform = "";
+          el.classList.remove("dragging");
+          var idx = state.clips.indexOf(clip);
+          var myW = clipDur(clip) * state.pxPerSec;
+          var center = clipStart(idx) * state.pxPerSec + (e.clientX - startX) + myW / 2;
+          var acc = 0, target = state.clips.length - 1;
+          for (var i=0;i<state.clips.length;i++){
+            var w = clipDur(state.clips[i]) * state.pxPerSec;
+            if (center < acc + w / 2){ target = i; break; }
+            acc += w;
+          }
+          if (target !== idx){
+            state.clips.splice(idx, 1);
+            state.clips.splice(target, 0, clip);
+          }
+          renderTimeline(); renderSegments(); showAt(state.playhead, false);
+        } else if (mode === "trimL" || mode === "trimR"){
+          renderTimeline(); renderClipPanel(); renderSegments();
+        }
+        mode = null;
+      }
+      el.addEventListener("pointerup", end);
+      el.addEventListener("pointercancel", end);
+    }
+    function renderTimelineSelection(){
+      var els = track.querySelectorAll(".clip");
+      els.forEach(function(el){ el.classList.toggle("sel", el.getAttribute("data-cid") === state.selectedClipId); });
+    }
+
+    /* ================= 分段条（片段横排 + 插入位） ================= */
+    function openInsert(index){
+      pendingAction = { type:"insert", index: Math.max(0, Math.min(index, state.clips.length)) };
+      fileInput.click();
+    }
+    function renderSegments(){
+      var strip = $("segStrip"); strip.innerHTML = "";
+      $("segEmpty").style.display = state.clips.length ? "none" : "block";
+      $("segToolRow").style.display = state.clips.length ? "flex" : "none";
+      var addHead = document.createElement("button");
+      addHead.className = "seg-add"; addHead.textContent = "添加片头";
+      addHead.addEventListener("click", function(){ openInsert(0); });
+      strip.appendChild(addHead);
+      state.clips.forEach(function(c, idx){
+        var plus = document.createElement("button");
+        plus.className = "seg-plus"; plus.textContent = "＋";
+        plus.addEventListener("click", function(){ openInsert(idx); });
+        strip.appendChild(plus);
+        var m = mediaById(c.mediaId);
+        var it = document.createElement("div");
+        it.className = "seg-item" + (c.id === state.selectedClipId ? " sel" : "");
+        if (m && m.thumb) it.style.backgroundImage = "url(" + m.thumb + ")";
+        var badge = document.createElement("span"); badge.className = "idx"; badge.textContent = idx + 1;
+        var sd = document.createElement("span"); sd.className = "sd"; sd.textContent = fmtSeg(clipDur(c));
+        var sn = document.createElement("span"); sn.className = "sn"; sn.textContent = m ? m.name : "";
+        it.appendChild(badge); it.appendChild(sd); it.appendChild(sn);
+        it.addEventListener("click", function(){
+          state.selectedClipId = c.id;
+          renderTimelineSelection(); renderClipPanel(); renderSegments();
+          setPlayhead(clipStart(idx));
+        });
+        strip.appendChild(it);
+      });
+      var plusEnd = document.createElement("button");
+      plusEnd.className = "seg-plus"; plusEnd.textContent = "＋";
+      plusEnd.addEventListener("click", function(){ openInsert(state.clips.length); });
+      strip.appendChild(plusEnd);
+      var addTail = document.createElement("button");
+      addTail.className = "seg-add"; addTail.textContent = "添加片尾";
+      addTail.addEventListener("click", function(){ openInsert(state.clips.length); });
+      strip.appendChild(addTail);
+      renderSegTools();
+    }
+    </script>
+
+    <script>
+    "use strict";
+    /* ================= 几何：旋转后尺寸 / 裁剪矩形 / 目标画布（预览与导出共用） ================= */
+    function effDims(m, rot){
+      var w = (m && m.vw) || 1280, h = (m && m.vh) || 720;
+      return (rot % 180 !== 0) ? { w:h, h:w } : { w:w, h:h };
+    }
+    function evenDn(v){ v = Math.floor(v); if (v % 2) v -= 1; return Math.max(2, v); }
+    /* 在旋转后帧 (fw×fh) 内按裁剪比例+位置求裁剪矩形（居中/靠上/靠下决定 y） */
+    function cropRect(fw, fh, ratioId, pos){
+      var r = cropRatioVal(ratioId);
+      if (!r) return { w:fw, h:fh, x:0, y:0 };
+      var cw, ch;
+      if (fw / fh > r){ ch = fh; cw = fh * r; } else { cw = fw; ch = fw / r; }
+      cw = evenDn(cw); ch = evenDn(ch);
+      var x = Math.round((fw - cw) / 2);
+      var y = pos === "top" ? 0 : (pos === "bottom" ? fh - ch : Math.round((fh - ch) / 2));
+      return { w:cw, h:ch, x:x, y:y };
+    }
+    function clipContentDims(c){
+      var m = mediaById(c.mediaId);
+      var eff = effDims(m, c.rot || 0);
+      var cr = cropRect(eff.w, eff.h, c.cropRatio || "orig", c.cropPos || "mid");
+      return { eff:eff, cr:cr };
+    }
+    /* 目标画布：与导出同一套计算（首片段内容尺寸 + 画幅），旋转/裁剪不互相打架 */
+    function canvasDims(){
+      var base = { w:1280, h:720 };
+      if (state.clips.length){
+        var cd = clipContentDims(state.clips[0]);
+        base = { w:cd.cr.w, h:cd.cr.h };
+      }
+      var ar = aspectRatioVal();
+      if (!ar){
+        var W = base.w, H = base.h;
+        if (W > 1280){ H = Math.round(H * 1280 / W); W = 1280; }
+        return { w:evenDn(W), h:evenDn(H) };
+      }
+      var L = Math.min(1280, Math.max(base.w, base.h));
+      var W2, H2;
+      if (ar >= 1){ W2 = L; H2 = L / ar; } else { H2 = L; W2 = L * ar; }
+      return { w:evenDn(W2), h:evenDn(H2) };
+    }
+
+    /* ================= 预览引擎（原生 video，片段链式播放） ================= */
+    var video = $("video");
+    var bgmAudio = $("bgmAudio");
+    var pvIdx = -1;
+    var pvMediaId = null;
+    var pvToken = 0;          // showAt 竞态令牌：旧的异步定位结果作废
+    var rafId = null;
+    var pvLayout = null;      // layoutPreview 算出的几何，供 tick 更新变焦
+
+    function locate(t){
+      var acc = 0;
+      for (var i=0;i<state.clips.length;i++){
+        var d = clipDur(state.clips[i]);
+        if (t < acc + d || i === state.clips.length - 1) return { idx:i, local: Math.max(0, Math.min(t - acc, d)) };
+        acc += d;
+      }
+      return null;
+    }
+    function waitEvent(el, ev){
+      return new Promise(function(res){
+        function h(){ el.removeEventListener(ev, h); res(); }
+        el.addEventListener(ev, h);
+      });
+    }
+    function applyPreviewAudio(){
+      var c = state.clips[pvIdx];
+      var v = 0;
+      if (c && !c.muted) v = c.volume;
+      if (state.bgm && state.bgm.mode === "replace") v = 0;
+      video.volume = Math.max(0, Math.min(1, v));
+    }
+    /* 预览舞台布局：画幅框（目标画布比例）居中 → 内容按 crop 后尺寸 contain 贴合 →
+       rotwrap 定位到裁剪窗 → video 按源尺寸居中旋转；变焦用 rotwrap scale 近似（绕裁剪中心） */
+    function layoutPreview(){
+      var wrap = $("previewWrap"), box = $("frameBox");
+      var W = wrap.clientWidth, H = wrap.clientHeight;
+      if (!W || !H) return;
+      var c = state.clips[pvIdx];
+      var canvas = canvasDims();
+      var bs = Math.min(W / canvas.w, H / canvas.h);
+      var bw = Math.max(2, Math.round(canvas.w * bs)), bh = Math.max(2, Math.round(canvas.h * bs));
+      box.style.width = bw + "px"; box.style.height = bh + "px";
+      // 边框填充近似：白色→框底色白；模糊→当前素材缩略图模糊铺满
+      var bg = $("frameBg");
+      if (state.project.border === "white"){ box.style.background = "#f4f4f4"; bg.style.display = "none"; }
+      else if (state.project.border === "blur"){
+        box.style.background = "#000";
+        var m0 = c ? mediaById(c.mediaId) : null;
+        if (m0 && m0.thumb){ bg.style.backgroundImage = "url(" + m0.thumb + ")"; bg.style.filter = "blur(18px) brightness(.75)"; bg.style.display = "block"; }
+        else bg.style.display = "none";
+      } else { box.style.background = "#000"; bg.style.display = "none"; }
+      pvLayout = null;
+      if (!c){ $("vignetteFx").style.display = "none"; $("revTag").style.display = "none"; return; }
+      var m = mediaById(c.mediaId);
+      var cd = clipContentDims(c);
+      var cs = Math.min(bw / cd.cr.w, bh / cd.cr.h);
+      var cw2 = cd.cr.w * cs, ch2 = cd.cr.h * cs;
+      var ox = (bw - cw2) / 2, oy = (bh - ch2) / 2;
+      var k = cw2 / cd.cr.w;
+      var rw = $("rotWrap");
+      rw.style.width = (cd.eff.w * k) + "px";
+      rw.style.height = (cd.eff.h * k) + "px";
+      rw.style.left = (ox - cd.cr.x * k) + "px";
+      rw.style.top = (oy - cd.cr.y * k) + "px";
+      rw.style.transformOrigin = ((cd.cr.x + cd.cr.w / 2) / cd.eff.w * 100) + "% " + ((cd.cr.y + cd.cr.h / 2) / cd.eff.h * 100) + "%";
+      var sw = (m && m.vw) || video.videoWidth || 16;
+      var sh = (m && m.vh) || video.videoHeight || 9;
+      video.style.width = (sw * k) + "px";
+      video.style.height = (sh * k) + "px";
+      video.style.transform = "translate(-50%,-50%) rotate(" + (c.rot || 0) + "deg)";
+      var f = filterById(c.filter || "none");
+      video.style.filter = f.css || "";
+      $("vignetteFx").style.display = (f.fx === "vignette") ? "block" : "none";
+      $("revTag").style.display = c.reverse ? "block" : "none";
+      pvLayout = { clipId: c.id };
+      updateZoomTransform();
+      renderOverlays();
+    }
+    /* 变焦预览近似：按片段内进度线性 scale（推镜 1→1.3 / 拉镜 1.3→1） */
+    function zoomFactorNow(){
+      var c = state.clips[pvIdx];
+      if (!c || !c.zoom || c.zoom === "none") return 1;
+      var d = clipDur(c); if (d <= 0) return 1;
+      var local = Math.max(0, Math.min(state.playhead - clipStart(pvIdx), d));
+      var p = local / d;
+      return c.zoom === "in" ? 1 + 0.3 * p : 1.3 - 0.3 * p;
+    }
+    function updateZoomTransform(){
+      var rw = $("rotWrap");
+      var z = zoomFactorNow();
+      rw.style.transform = z === 1 ? "" : "scale(" + z.toFixed(4) + ")";
+    }
+    function syncBgmPreview(restart){
+      if (!state.bgm){ bgmAudio.pause(); return; }
+      var a = audioById(state.bgm.audioId);
+      if (!a){ bgmAudio.pause(); return; }
+      if (bgmAudio.getAttribute("src") !== a.url) bgmAudio.src = a.url;
+      bgmAudio.volume = state.bgm.volume;
+      if (state.playing){
+        if (restart || bgmAudio.paused){
+          if (a.duration) bgmAudio.currentTime = state.playhead % a.duration;
+          var p = bgmAudio.play(); if (p && p.catch) p.catch(function(){});
+        }
+      } else bgmAudio.pause();
+    }
+
+    async function showAt(t, autoplay){
+      var myToken = ++pvToken;
+      if (!state.clips.length){ pvIdx = -1; pvMediaId = null; video.removeAttribute("src"); layoutPreview(); return; }
+      var loc = locate(t); if (!loc) return;
+      var clip = state.clips[loc.idx];
+      var m = mediaById(clip.mediaId); if (!m) return;
+      if (pvIdx !== loc.idx || pvMediaId !== clip.mediaId){
+        pvIdx = loc.idx; pvMediaId = clip.mediaId;
+        if (video.getAttribute("src") !== m.url){
+          video.src = m.url;
+          await waitEvent(video, "loadedmetadata");
+          if (myToken !== pvToken) return;
+        }
+      }
+      applyPreviewAudio();
+      video.playbackRate = clip.speed || 1;   // 变速预览
+      layoutPreview();
+      var target = clip.inn + loc.local * (clip.speed || 1);
+      if (Math.abs(video.currentTime - target) > 0.06){
+        try { video.currentTime = target; } catch(e){}
+      }
+      if (autoplay){
+        var p = video.play(); if (p && p.catch) p.catch(function(){});
+      } else {
+        video.pause();
+      }
+      syncBgmPreview(false);
+      renderOvVisibility();
+    }
+
+    function tickLoop(){
+      if (!state.playing) return;
+      var clip = state.clips[pvIdx];
+      if (clip){
+        var t = clipStart(pvIdx) + Math.max(0, video.currentTime - clip.inn) / (clip.speed || 1);
+        if (video.currentTime >= clip.out - 0.02){
+          if (pvIdx < state.clips.length - 1){
+            state.playhead = clipStart(pvIdx + 1);
+            updatePlayheadUI();
+            showAt(state.playhead, true);
+          } else {
+            pausePreview();
+            state.playhead = totalDur();
+            updatePlayheadUI();
+            centerScrollOnPlayhead();
+            renderOvVisibility();
+            return;
+          }
+        } else {
+          state.playhead = Math.min(t, totalDur());
+          updatePlayheadUI();
+          centerScrollOnPlayhead();
+          updateZoomTransform();
+          renderOvVisibility();
+        }
+      }
+      rafId = requestAnimationFrame(tickLoop);
+    }
+    function playPreview(){
+      if (!state.clips.length){ toast("先把素材加入时间线"); return; }
+      if (state.playhead >= totalDur() - 0.03) state.playhead = 0;
+      state.playing = true;
+      $("icoPlay").style.display = "none"; $("icoPause").style.display = "block";
+      showAt(state.playhead, true).then(function(){ syncBgmPreview(true); });
+      cancelAnimationFrame(rafId); rafId = requestAnimationFrame(tickLoop);
+    }
+    function pausePreview(){
+      state.playing = false;
+      video.pause(); bgmAudio.pause();
+      $("icoPlay").style.display = "block"; $("icoPause").style.display = "none";
+      cancelAnimationFrame(rafId);
+    }
+    $("btnPlay").addEventListener("click", function(){
+      if (state.playing) pausePreview(); else playPreview();
+    });
+    video.addEventListener("click", function(){
+      if (state.playing) pausePreview(); else playPreview();
+    });
+    /* 上一段/下一段：跳到片段边界 */
+    function seekBoundary(dir){
+      var bounds = [0];
+      for (var i=0;i<state.clips.length;i++) bounds.push(clipStart(i) + clipDur(state.clips[i]));
+      var t = state.playhead, target = dir < 0 ? 0 : totalDur();
+      if (dir < 0){
+        for (var j=bounds.length-1;j>=0;j--){ if (bounds[j] < t - 0.05){ target = bounds[j]; break; } }
+      } else {
+        for (var k=0;k<bounds.length;k++){ if (bounds[k] > t + 0.05){ target = bounds[k]; break; } }
+      }
+      pausePreview();
+      setPlayhead(target);
+    }
+    $("btnPrev").addEventListener("click", function(){ seekBoundary(-1); });
+    $("btnNext").addEventListener("click", function(){ seekBoundary(1); });
+
+    /* ================= 覆盖层（贴纸/文字）：预览渲染 + 拖拽 ================= */
+    function renderOverlays(){
+      var layer = $("ovLayer"); layer.innerHTML = "";
+      var box = $("frameBox");
+      var bh = box.clientHeight || 180;
+      state.overlays.forEach(function(ov){
+        var el = document.createElement("div");
+        el.className = "ov-item" + (ov.id === state.selectedOverlayId ? " sel" : "");
+        el.setAttribute("data-ovid", ov.id);
+        el.style.left = (ov.x * 100) + "%";
+        el.style.top = (ov.y * 100) + "%";
+        if (ov.kind === "sticker"){
+          var img = document.createElement("img");
+          img.src = ov.imgUrl; img.alt = "";
+          img.style.height = Math.max(14, ov.size * bh) + "px";
+          img.style.width = "auto";
+          el.appendChild(img);
+        } else {
+          var tx = document.createElement("div");
+          tx.className = "ovtxt";
+          tx.textContent = ov.text;
+          tx.style.color = ov.color;
+          tx.style.fontSize = Math.max(10, ov.size * bh) + "px";
+          tx.style.textShadow = "0 1px 4px rgba(0,0,0,.5)";
+          el.appendChild(tx);
+        }
+        attachOvDrag(el, ov);
+        layer.appendChild(el);
+      });
+      renderOvVisibility();
+    }
+    function renderOvVisibility(){
+      var els = $("ovLayer").children;
+      for (var i=0;i<els.length;i++){
+        var ov = overlayById(els[i].getAttribute("data-ovid"));
+        if (!ov) continue;
+        var vis = state.playhead >= ov.start - 0.001 && state.playhead <= ov.end + 0.001;
+        els[i].style.display = vis ? "block" : "none";
+      }
+      renderSubDisplay();
+    }
+    /* 字幕预览：播放头落在某条字幕时间窗内即显示（底部居中经典样式） */
+    function renderSubDisplay(){
+      var box = $("subDisplay"), sp = $("subSpan");
+      if (!box || !sp) return;
+      var st = state.project.subtitle || {};
+      var cur = null;
+      for (var i=0;i<state.subtitles.length;i++){
+        var s = state.subtitles[i];
+        if (s.end > s.start && state.playhead >= s.start - 0.001 && state.playhead <= s.end + 0.001){ cur = s; break; }
+      }
+      if (!cur){ box.style.display = "none"; return; }
+      var fb = $("frameBox");
+      var px = Math.max(11, Math.round((fb ? fb.clientHeight : 180) * (st.size || 0.05)));
+      sp.style.fontSize = px + "px";
+      sp.style.color = st.color || "#ffffff";
+      sp.textContent = cur.text;
+      box.className = "sub-display" + (st.bg === false ? " nobg" : "");
+      box.style.display = "block";
+    }
+    function attachOvDrag(el, ov){
+      var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0, moved = false;
+      el.addEventListener("pointerdown", function(e){
+        dragging = true; moved = false;
+        sx = e.clientX; sy = e.clientY; ox = ov.x; oy = ov.y;
+        state.selectedOverlayId = ov.id;
+        renderOverlays(); renderOvEdit();
+        if (state.activeTab !== "clip") switchTab("clip");
+        try { el.setPointerCapture(e.pointerId); } catch(err){}
+        e.preventDefault(); e.stopPropagation();
+      });
+      el.addEventListener("pointermove", function(e){
+        if (!dragging) return;
+        var r = $("frameBox").getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        var dx = (e.clientX - sx) / r.width, dy = (e.clientY - sy) / r.height;
+        if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 3) moved = true;
+        ov.x = Math.max(0, Math.min(1, ox + dx));
+        ov.y = Math.max(0, Math.min(1, oy + dy));
+        el.style.left = (ov.x * 100) + "%";
+        el.style.top = (ov.y * 100) + "%";
+      });
+      function end(){ dragging = false; }
+      el.addEventListener("pointerup", end);
+      el.addEventListener("pointercancel", end);
+    }
+    function defaultOvWindow(){
+      var tot = totalDur();
+      var s = Math.min(state.playhead, Math.max(0, tot - 0.5));
+      var e = tot > 0 ? Math.min(s + 3, tot) : s + 3;
+      if (e - s < 0.3) e = s + 0.3;
+      return { start: Math.round(s * 10) / 10, end: Math.round(e * 10) / 10 };
+    }
+    /* emoji → 透明 PNG（canvas 大字号渲染），贴纸与导出共用同一张图 */
+    function emojiPngBlob(emoji){
+      return new Promise(function(res){
+        var cv = document.createElement("canvas"); cv.width = 256; cv.height = 256;
+        var cx = cv.getContext("2d");
+        cx.font = '205px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+        cx.textAlign = "center"; cx.textBaseline = "middle";
+        cx.fillText(emoji, 128, 136);
+        if (cv.toBlob) cv.toBlob(function(b){ res(b); }, "image/png");
+        else res(null);
+      });
+    }
+    /* 字幕 → 透明 PNG（按字符自动换行，系统字体，中文没问题；黑底药丸与预览一致） */
+    function subtitlePngBlob(sub, W, H){
+      return new Promise(function(res){
+        var st = state.project.subtitle || {};
+        var px = Math.max(14, Math.round((st.size || 0.05) * H));
+        var maxW = Math.round(W * 0.92);
+        var cv = document.createElement("canvas");
+        var cx = cv.getContext("2d");
+        var font = "700 " + px + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC","Segoe UI",sans-serif';
+        cx.font = font;
+        var lines = [];
+        sub.text.split("\n").forEach(function(par){
+          var cur = "";
+          for (var i = 0; i < par.length; i++){
+            var ch = par[i];
+            if (cur.length && cx.measureText(cur + ch).width > maxW){ lines.push(cur); cur = ch; }
+            else cur += ch;
+          }
+          lines.push(cur);
+        });
+        var lineH = Math.round(px * 1.4);
+        var padX = Math.round(px * 0.6), padY = Math.round(px * 0.32);
+        var tw = 0;
+        lines.forEach(function(l){ tw = Math.max(tw, cx.measureText(l).width); });
+        cv.width = Math.max(2, Math.ceil(tw) + padX * 2);
+        cv.height = Math.max(2, lineH * lines.length + padY * 2);
+        cx = cv.getContext("2d");
+        cx.font = font; cx.textAlign = "center"; cx.textBaseline = "top";
+        if (st.bg !== false){
+          cx.fillStyle = "rgba(0,0,0,0.55)";
+          var r = Math.min(10, padY + 2), bw = cv.width, bh = cv.height;
+          cx.beginPath();
+          cx.moveTo(r, 0);
+          cx.arcTo(bw, 0, bw, bh, r); cx.arcTo(bw, bh, 0, bh, r);
+          cx.arcTo(0, bh, 0, 0, r); cx.arcTo(0, 0, bw, 0, r);
+          cx.closePath(); cx.fill();
+        } else {
+          cx.shadowColor = "rgba(0,0,0,.85)"; cx.shadowBlur = Math.max(2, px * 0.1);
+        }
+        cx.fillStyle = st.color || "#ffffff";
+        for (var li = 0; li < lines.length; li++){
+          cx.fillText(lines[li], cv.width / 2, padY + li * lineH);
+        }
+        if (cv.toBlob) cv.toBlob(function(b){ res(b); }, "image/png");
+        else res(null);
+      });
+    }
+    async function addSticker(emoji){
+      var blob = await emojiPngBlob(emoji);
+      if (!blob){ toast("当前浏览器无法生成贴纸图"); return; }
+      var w = defaultOvWindow();
+      var ov = { id:uid(), kind:"sticker", emoji:emoji, imgBlob:blob, imgUrl:URL.createObjectURL(blob),
+        text:"", color:"#ffffff", size:0.22, x:0.5, y:0.5, start:w.start, end:w.end };
+      state.overlays.push(ov);
+      state.selectedOverlayId = ov.id;
+      renderOverlays(); renderOvEdit(); renderToolPanel();
+      toast("贴纸已添加：在预览上拖动位置，在下方调大小和显示时间");
+    }
+    function addStickerImage(file){
+      var w = defaultOvWindow();
+      var ov = { id:uid(), kind:"sticker", emoji:"", imgBlob:file, imgUrl:URL.createObjectURL(file),
+        text:"", color:"#ffffff", size:0.22, x:0.5, y:0.5, start:w.start, end:w.end };
+      state.overlays.push(ov);
+      state.selectedOverlayId = ov.id;
+      renderOverlays(); renderOvEdit(); renderToolPanel();
+      toast("图片贴纸已添加：在预览上拖动位置");
+    }
+    function addTextOverlay(text, color, sizeFrac){
+      var w = defaultOvWindow();
+      var ov = { id:uid(), kind:"text", emoji:"", imgBlob:null, imgUrl:"",
+        text:text, color:color || "#ffffff", size:sizeFrac || 0.09, x:0.5, y:0.82, start:w.start, end:w.end };
+      state.overlays.push(ov);
+      state.selectedOverlayId = ov.id;
+      renderOverlays(); renderOvEdit(); renderToolPanel();
+      toast("文字已添加：在预览上拖动位置");
+    }
+    $("stickerInput").addEventListener("change", function(){
+      var f = (this.files || [])[0]; this.value = "";
+      if (f) addStickerImage(f);
+    });
+    $("srtInput").addEventListener("change", function(){
+      var f = (this.files || [])[0]; this.value = "";
+      if (f) importSrtFile(f);
+    });
+    </script>
+
+    <script>
+    "use strict";
+    /* ================= 片段编辑动作 ================= */
+    function clipIndexAt(t){
+      var acc = 0;
+      for (var i=0;i<state.clips.length;i++){
+        var d = clipDur(state.clips[i]);
+        if (t < acc + d || i === state.clips.length - 1) return i;
+        acc += d;
+      }
+      return -1;
+    }
+    function targetClipForEdit(){
+      if (!state.clips.length){ toast("先把素材加入时间线"); return null; }
+      var idx = clipIndexAt(state.playhead);
+      if (idx < 0) return null;
+      var c = state.clips[idx];
+      if (state.selectedClipId !== c.id){
+        state.selectedClipId = c.id;
+        renderTimelineSelection(); renderClipPanel(); renderSegments();
+      }
+      return { idx:idx, clip:c, local: state.playhead - clipStart(idx) };
+    }
+    function afterClipChange(keepPlayhead){
+      if (state.playhead > totalDur()) state.playhead = totalDur();
+      renderTimeline(); renderClipPanel(); renderSegments(); refreshExportBtn();
+      showAt(state.playhead, state.playing && !keepPlayhead ? true : false);
+      layoutPreview();
+    }
+    function splitAtPlayhead(){
+      var t = targetClipForEdit(); if (!t) return;
+      var c = t.clip;
+      if (t.local <= 0.05 || t.local >= clipDur(c) - 0.05){
+        toast("播放头不在片段中间，先把红色播放头拖到要切开的位置");
+        return;
+      }
+      var cut = c.inn + t.local * (c.speed || 1); // 有效时长→源时间换算
+      var props = copyClipProps(c);
+      var c2 = { id:uid(), mediaId:c.mediaId, inn:cut, out:c.out, volume:c.volume, muted:c.muted, rot:(c.rot || 0) };
+      for (var k in props) c2[k] = props[k];
+      c.out = cut;
+      state.clips.splice(t.idx + 1, 0, c2);
+      state.selectedClipId = c2.id;
+      renderTimeline(); renderClipPanel(); renderSegments();
+      toast("已在播放头处分割（速度/滤镜/裁剪等属性已继承）");
+    }
+    function setInPoint(){
+      var t = targetClipForEdit(); if (!t) return;
+      var c = t.clip;
+      if (t.local <= 0.02){ toast("播放头已经在入点处了"); return; }
+      if (t.local >= clipDur(c) - 0.2 / (c.speed || 1)){ toast("入点离出点太近，片段至少保留 0.2 秒"); return; }
+      c.inn = c.inn + t.local * (c.speed || 1);
+      renderTimeline(); renderClipPanel(); renderSegments();
+      showAt(state.playhead, false);
+      toast("入点已设为 " + fmt(c.inn));
+    }
+    function setOutPoint(){
+      var t = targetClipForEdit(); if (!t) return;
+      var c = t.clip;
+      if (t.local >= clipDur(c) - 0.02){ toast("播放头已经在出点处了"); return; }
+      if (t.local <= 0.2 / (c.speed || 1)){ toast("出点离入点太近，片段至少保留 0.2 秒"); return; }
+      c.out = c.inn + t.local * (c.speed || 1);
+      renderTimeline(); renderClipPanel(); renderSegments();
+      showAt(state.playhead, false);
+      toast("出点已设为 " + fmt(c.out));
+    }
+    function duplicateSelectedClip(){
+      var c = clipById(state.selectedClipId);
+      if (!c){ toast("先选中一个片段"); return; }
+      var idx = state.clips.indexOf(c);
+      var props = copyClipProps(c);
+      var c2 = { id:uid(), mediaId:c.mediaId, inn:c.inn, out:c.out, volume:c.volume, muted:c.muted, rot:(c.rot || 0) };
+      for (var k in props) c2[k] = props[k];
+      state.clips.splice(idx + 1, 0, c2);
+      state.selectedClipId = c2.id;
+      afterClipChange(true);
+      toast("已复制片段（全部属性一并带过去）");
+    }
+    function deleteSelectedClip(){
+      var c = clipById(state.selectedClipId); if (!c) return;
+      pausePreview();
+      state.clips = state.clips.filter(function(x){ return x.id !== c.id; });
+      state.selectedClipId = state.clips.length ? state.clips[0].id : null;
+      pvIdx = -1; pvMediaId = null;
+      if (state.playhead > totalDur()) state.playhead = totalDur();
+      renderTimeline(); renderClipPanel(); renderSegments(); refreshExportBtn();
+      showAt(state.playhead, false);
+    }
+    function toggleMuteSelected(){
+      var c = clipById(state.selectedClipId); if (!c) return;
+      c.muted = !c.muted;
+      renderTimeline(); renderClipPanel(); renderSegments(); applyPreviewAudio();
+    }
+    function rotateSelectedClip(dir, fromCapsule){
+      var c = clipById(state.selectedClipId);
+      if (!c && fromCapsule){
+        var idx = clipIndexAt(state.playhead);
+        if (idx >= 0){ c = state.clips[idx]; state.selectedClipId = c.id; }
+      }
+      if (!c){ toast("先选中一个片段再旋转"); return; }
+      c.rot = (((c.rot || 0) + dir * 90) % 360 + 360) % 360;
+      var i2 = state.clips.indexOf(c);
+      renderTimeline(); renderClipPanel(); renderSegments();
+      if (i2 >= 0){ state.playhead = clipStart(i2); updatePlayheadUI(); centerScrollOnPlayhead(); }
+      showAt(state.playhead, state.playing);
+      toast("片段已旋转到 " + c.rot + "°");
+    }
+    function moveClip(dir){
+      var idx = state.clips.findIndex(function(x){ return x.id === state.selectedClipId; });
+      var j = idx + dir;
+      if (idx < 0 || j < 0 || j >= state.clips.length) return;
+      var tmp = state.clips[idx]; state.clips[idx] = state.clips[j]; state.clips[j] = tmp;
+      renderTimeline(); renderSegments(); showAt(state.playhead, false);
+    }
+    /* 替换素材：保留位置/入出点口径（入点归 0，出点=min(原源时长,新素材时长)）与音量/旋转/全部属性 */
+    function replaceClipMedia(c, newMediaId){
+      var m = mediaById(newMediaId);
+      if (!m || !m.duration){ toast("新素材读不到时长，替换失败"); return; }
+      var oldSrc = srcDur(c);
+      c.mediaId = newMediaId;
+      c.inn = 0;
+      c.out = Math.min(oldSrc, m.duration);
+      if (pvMediaId === m.url) pvMediaId = null;
+      pvIdx = -1; pvMediaId = null;
+      ensureFrames(m);
+      afterClipChange(true);
+      toast("已替换素材（位置、时长口径与原设置保留）");
+    }
+    function requestReplaceSelected(){
+      var c = clipById(state.selectedClipId);
+      if (!c){ toast("先选中一个片段"); return; }
+      pendingAction = { type:"replace", clipId:c.id };
+      fileInput.click();
+    }
+    function toggleReverseSelected(){
+      var c = clipById(state.selectedClipId); if (!c) return;
+      if (!c.reverse && srcDur(c) > 60){
+        showConfirm("倒放内存提醒",
+          "这个片段有 " + fmt(srcDur(c)) + "（超过 60 秒）。倒放导出需要把整段画面先在内存里反转，长片段可能导致导出失败或浏览器卡死。仍要开启倒放吗？",
+          function(){
+            c.reverse = true;
+            renderTimeline(); renderClipPanel(); renderSegments(); layoutPreview();
+            toast("已开启倒放（预览不倒放，导出后生效）");
+          });
+        return;
+      }
+      c.reverse = !c.reverse;
+      renderTimeline(); renderClipPanel(); renderSegments(); layoutPreview();
+      toast(c.reverse ? "已开启倒放（预览不倒放，导出后生效）" : "已关闭倒放");
+    }
+
+    /* ================= 工具行（剪辑 / 分段） ================= */
+    var ICONS = {
+      trim:  '<svg class="ic" viewBox="0 0 24 24"><path d="M4 7v10M20 7v10M4 12h16"/><path d="M7.5 9.5 4.8 12l2.7 2.5M16.5 9.5l2.7 2.5-2.7 2.5"/></svg>',
+      split: '<svg class="ic" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.8 20 19M8.2 16.2 20 5"/></svg>',
+      copy:  '<svg class="ic" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-3a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>',
+      del:   '<svg class="ic" viewBox="0 0 24 24"><path d="M4.5 6.5h15M9.5 6V4.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V6M6.5 6.5l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12M10 10.5v5.5M14 10.5v5.5"/></svg>',
+      mute:  '<svg class="ic" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z"/><path d="M15.5 9.8l5 5.4M20.5 9.8l-5 5.4"/></svg>',
+      vol:   '<svg class="ic" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z"/><path d="M15.5 9.5a4 4 0 0 1 0 5M18 7a7.5 7.5 0 0 1 0 10"/></svg>',
+      rot:   '<svg class="ic" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 3v4h-4"/></svg>',
+      speed: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 13l3.2-3.2M9.5 2.8h5M12 2.8v2.7"/></svg>',
+      filter:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/></svg>',
+      crop:  '<svg class="ic" viewBox="0 0 24 24"><path d="M7 3.5V17a1 1 0 0 0 1 1h12.5M3.5 7H17a1 1 0 0 1 1 1v12.5"/></svg>',
+      zoom:  '<svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8 20.5 20.5M11 8.5v5M8.5 11h5"/></svg>',
+      rev:   '<svg class="ic" viewBox="0 0 24 24"><path d="M11 6.5v11L3.8 12zM20.2 6.5v11L13 12z"/></svg>',
+      enh:   '<svg class="ic" viewBox="0 0 24 24"><path d="M4 10.5v3M8 7.5v9M12 5v14M16 8.5v7M20 10.5v3"/></svg>',
+      sticker:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="9" cy="10" r=".4"/><circle cx="15" cy="10" r=".4"/><path d="M8.5 14.5a5 5 0 0 0 7 0"/></svg>',
+      text:  '<svg class="ic" viewBox="0 0 24 24"><path d="M5 5.5V4h14v1.5M12 4v16M9.5 20h5"/></svg>',
+      subtitle:'<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9.5h10M7 13h10M7 16.5h6"/></svg>',
+      replace:'<svg class="ic" viewBox="0 0 24 24"><path d="M4 8.5A8 8 0 0 1 19.6 6M20 15.5A8 8 0 0 1 4.4 18"/><path d="M20 3.5v4h-4M4 20.5v-4h4"/></svg>'
+    };
+    var CLIP_TOOLS = [
+      { id:"trim", label:"截取", panel:true },
+      { id:"split", label:"分割" },
+      { id:"copy", label:"复制" },
+      { id:"speed", label:"速度", panel:true },
+      { id:"filter", label:"滤镜", panel:true },
+      { id:"crop", label:"裁剪", panel:true },
+      { id:"zoom", label:"变焦", panel:true },
+      { id:"rev", label:"倒放", panel:true },
+      { id:"enh", label:"增强", panel:true },
+      { id:"mute", label:"静音" },
+      { id:"vol", label:"音量", panel:true },
+      { id:"rot", label:"旋转", panel:true },
+      { id:"sticker", label:"贴纸", panel:true, noClip:true },
+      { id:"text", label:"文字", panel:true, noClip:true },
+      { id:"subtitle", label:"字幕", panel:true, noClip:true },
+      { id:"del", label:"删除" }
+    ];
+    var SEG_TOOLS = [
+      { id:"rot", label:"旋转" },
+      { id:"copy", label:"复制" },
+      { id:"replace", label:"替换" },
+      { id:"del", label:"删除" },
+      { id:"mute", label:"静音" }
+    ];
+    function selClip(){ return clipById(state.selectedClipId); }
+
+    function renderClipPanel(){
+      var c = selClip();
+      $("clipNone").style.display = c ? "none" : "block";
+      $("clipBox").style.display = c ? "block" : "none";
+      if (c){
+        var m = mediaById(c.mediaId);
+        $("clipName").textContent = m ? m.name : "—";
+        $("clipRange").textContent = "入 " + fmt(c.inn) + " · 出 " + fmt(c.out) + " · 长 " + fmt(clipDur(c)) +
+          ((c.speed || 1) !== 1 ? "（" + c.speed + "×）" : "") + (c.reverse ? " · 倒放" : "");
+      }
+      renderToolRow();
+      renderToolPanel();
+      updateEditBar();
+    }
+    function renderToolRow(){
+      var row = $("toolRow"); row.innerHTML = "";
+      var c = selClip();
+      CLIP_TOOLS.forEach(function(t){
+        var b = document.createElement("button");
+        b.className = "tool" + (state.activeTool === t.id ? " on" : "");
+        if (t.id === "mute" && c && c.muted) b.classList.add("toggled");
+        if (t.id === "rev" && c && c.reverse) b.classList.add("toggled");
+        if (t.id === "enh" && c && c.enhance) b.classList.add("toggled");
+        b.innerHTML = ICONS[t.id] + "<span>" + t.label + "</span>";
+        if (!c && !t.noClip) b.disabled = true;
+        b.addEventListener("click", function(){ onToolClick(t); });
+        row.appendChild(b);
+      });
+    }
+    function renderSegTools(){
+      var row = $("segToolRow"); row.innerHTML = "";
+      var c = selClip();
+      SEG_TOOLS.forEach(function(t){
+        var b = document.createElement("button");
+        b.className = "tool";
+        if (t.id === "mute" && c && c.muted) b.classList.add("toggled");
+        b.innerHTML = ICONS[t.id] + "<span>" + t.label + "</span>";
+        if (!c) b.disabled = true;
+        b.addEventListener("click", function(){
+          if (t.id === "rot") rotateSelectedClip(1);
+          else if (t.id === "copy") duplicateSelectedClip();
+          else if (t.id === "replace") requestReplaceSelected();
+          else if (t.id === "del") deleteSelectedClip();
+          else if (t.id === "mute") toggleMuteSelected();
+        });
+        row.appendChild(b);
+      });
+    }
+    function onToolClick(t){
+      var c = selClip();
+      switch (t.id){
+        case "split": splitAtPlayhead(); return;
+        case "copy": duplicateSelectedClip(); return;
+        case "del": deleteSelectedClip(); return;
+        case "mute": toggleMuteSelected(); return;
+        case "rot":
+          if (state.activeTool === "rot"){ rotateSelectedClip(1); return; }
+          break;
+      }
+      state.activeTool = (state.activeTool === t.id) ? null : t.id;
+      renderToolRow(); renderToolPanel();
+    }
+    function chipsRow(items, curId, onPick){
+      var wrap = document.createElement("div"); wrap.className = "chips";
+      items.forEach(function(it){
+        var b = document.createElement("button");
+        b.className = "chip" + (it.id === curId ? " on" : "");
+        b.textContent = it.label;
+        b.addEventListener("click", function(){ onPick(it.id); });
+        wrap.appendChild(b);
+      });
+      return wrap;
+    }
+    function panelNote(txt){
+      var p = document.createElement("p"); p.className = "hint"; p.style.marginTop = "8px"; p.textContent = txt;
+      return p;
+    }
+    function renderToolPanel(){
+      var p = $("toolPanel");
+      p.innerHTML = "";
+      var t = state.activeTool;
+      var c = selClip();
+      if (!t || (!c && t !== "sticker" && t !== "text" && t !== "subtitle")){ p.classList.remove("on"); return; }
+      p.classList.add("on");
+      if (t === "trim" && c){
+        var row = document.createElement("div"); row.className = "btn-row";
+        var b1 = document.createElement("button"); b1.className = "btn"; b1.textContent = "设为入点（I）";
+        b1.addEventListener("click", setInPoint);
+        var b2 = document.createElement("button"); b2.className = "btn"; b2.textContent = "设为出点（O）";
+        b2.addEventListener("click", setOutPoint);
+        row.appendChild(b1); row.appendChild(b2);
+        p.appendChild(row);
+        p.appendChild(panelNote("把红针移到想要的位置再点入点/出点；与时间线上拖片段两端把手改的是同一份数据。也可在时间线上直接拖把手裁剪。"));
+      } else if (t === "speed" && c){
+        var items = SPEEDS.map(function(s){ return { id:s, label:(s === 1 ? "1× 正常" : s + "×") }; });
+        p.appendChild(chipsRow(items, c.speed || 1, function(v){
+          c.speed = v;
+          if (state.playhead > totalDur()) state.playhead = totalDur();
+          renderTimeline(); renderClipPanel(); renderSegments();
+          showAt(state.playhead, false);
+        }));
+        p.appendChild(panelNote("片段在时间线上的时长 = 源时长 ÷ 倍速。预览按 playbackRate 播放，导出用 setpts + atempo 链，口径一致。当前有效时长 " + fmt(clipDur(c)) + "。"));
+      } else if (t === "filter" && c){
+        var m = mediaById(c.mediaId);
+        var wrap = document.createElement("div"); wrap.className = "chips";
+        FILTERS.forEach(function(f){
+          var b = document.createElement("button");
+          b.className = "chip" + ((c.filter || "none") === f.id ? " on" : "");
+          if (m && m.thumb){
+            var im = document.createElement("img"); im.src = m.thumb; im.alt = "";
+            im.style.filter = f.css || "";
+            b.appendChild(im);
+          }
+          b.appendChild(document.createTextNode(f.label));
+          b.addEventListener("click", function(){
+            c.filter = f.id;
+            renderTimeline(); renderClipPanel(); layoutPreview();
+          });
+          wrap.appendChild(b);
+        });
+        p.appendChild(wrap);
+        p.appendChild(panelNote("预览用 CSS 滤镜近似，导出用对应的 FFmpeg 色彩链（eq / colorbalance / hue / vignette），参数已尽量对齐。"));
+      } else if (t === "crop" && c){
+        var l1 = document.createElement("div"); l1.className = "fp-label"; l1.textContent = "裁剪比例（在旋转之后裁）";
+        p.appendChild(l1);
+        p.appendChild(chipsRow(CROP_RATIOS, c.cropRatio || "orig", function(v){
+          c.cropRatio = v; renderClipPanel(); layoutPreview();
+        }));
+        var l2 = document.createElement("div"); l2.className = "fp-label mt"; l2.textContent = "裁剪位置";
+        p.appendChild(l2);
+        p.appendChild(chipsRow(CROP_POS, c.cropPos || "mid", function(v){
+          c.cropPos = v; renderClipPanel(); layoutPreview();
+        }));
+        p.appendChild(panelNote("预览同步显示裁后范围；导出按同一矩形 crop。竖屏素材裁 16:9、横屏裁 9:16 都可以。"));
+      } else if (t === "zoom" && c){
+        p.appendChild(chipsRow([
+          { id:"none", label:"无" }, { id:"in", label:"缓慢放大（推镜）" }, { id:"out", label:"缓慢缩小（拉镜）" }
+        ], c.zoom || "none", function(v){
+          c.zoom = v;
+          renderTimeline(); renderClipPanel(); renderSegments(); layoutPreview();
+        }));
+        p.appendChild(panelNote("导出用 zoompan 按片段时长线性推/拉（1.0↔1.3 倍）；预览用画面缩放近似同一进度。"));
+      } else if (t === "rev" && c){
+        var rb = document.createElement("div"); rb.className = "btn-row";
+        var bb = document.createElement("button"); bb.className = "btn" + (c.reverse ? " danger" : " blue");
+        bb.textContent = c.reverse ? "关闭倒放" : "开启倒放";
+        bb.addEventListener("click", toggleReverseSelected);
+        rb.appendChild(bb); p.appendChild(rb);
+        p.appendChild(panelNote("倒放只在导出时生效（reverse + areverse），预览无法真倒放，片段上会打「倒放」标记。超过 60 秒的片段开启前会先提醒内存风险。"));
+      } else if (t === "enh" && c){
+        var eb = document.createElement("div"); eb.className = "btn-row";
+        var eb2 = document.createElement("button"); eb2.className = "btn" + (c.enhance ? " danger" : " blue");
+        eb2.textContent = c.enhance ? "关闭原声增强" : "开启原声增强";
+        eb2.addEventListener("click", function(){
+          c.enhance = !c.enhance;
+          renderClipPanel(); renderTimeline();
+          toast(c.enhance ? "本片段原声增强已开启（导出生效）" : "本片段原声增强已关闭");
+        });
+        eb.appendChild(eb2); p.appendChild(eb);
+        p.appendChild(panelNote("导出音频链加 loudnorm 响度规范化，人声更稳、音量更齐。「音频」页签里还有全局开关，任一开启即生效。"));
+      } else if (t === "vol" && c){
+        var f = document.createElement("div"); f.className = "field"; f.style.marginBottom = "4px";
+        var fl = document.createElement("div"); fl.className = "flabel";
+        fl.innerHTML = "<span>片段音量</span><b>" + Math.round(c.volume * 100) + "%</b>";
+        var rg = document.createElement("input");
+        rg.type = "range"; rg.min = 0; rg.max = 150; rg.value = Math.round(c.volume * 100);
+        rg.addEventListener("input", function(){
+          c.volume = this.value / 100;
+          fl.querySelector("b").textContent = this.value + "%";
+          applyPreviewAudio();
+        });
+        rg.addEventListener("change", function(){ renderClipPanel(); });
+        f.appendChild(fl); f.appendChild(rg);
+        p.appendChild(f);
+      } else if (t === "rot" && c){
+        var rr = document.createElement("div"); rr.className = "btn-row";
+        var bl = document.createElement("button"); bl.className = "btn"; bl.textContent = "↺ 逆时针 90°";
+        bl.addEventListener("click", function(){ rotateSelectedClip(-1); });
+        var br = document.createElement("button"); br.className = "btn"; br.textContent = "顺时针 90° ↻";
+        br.addEventListener("click", function(){ rotateSelectedClip(1); });
+        rr.appendChild(bl); rr.appendChild(br);
+        p.appendChild(rr);
+        p.appendChild(panelNote("当前角度 " + (c.rot || 0) + "°。竖屏片段旋转 90° 变横屏；预览立即生效，导出按真实旋转（transpose，宽高互换）。"));
+      } else if (t === "sticker"){
+        var eg = document.createElement("div"); eg.className = "emoji-grid";
+        ["😀","😍","🥳","🔥","⭐","❤️","👍","🎉","🌈","🐱","🍓","⚽"].forEach(function(em){
+          var b = document.createElement("button"); b.textContent = em;
+          b.addEventListener("click", function(){ addSticker(em); });
+          eg.appendChild(b);
+        });
+        p.appendChild(eg);
+        var ib = document.createElement("div"); ib.className = "btn-row"; ib.style.marginTop = "10px";
+        var bb2 = document.createElement("button"); bb2.className = "btn"; bb2.textContent = "导入图片当贴纸";
+        bb2.addEventListener("click", function(){ $("stickerInput").click(); });
+        ib.appendChild(bb2); p.appendChild(ib);
+        p.appendChild(ovList("sticker"));
+        p.appendChild(panelNote("点贴纸添加到预览中央，拖动改位置；选中后在下方调大小与显示时间窗。导出时按时间窗 overlay 叠加。"));
+      } else if (t === "text"){
+        var inp = document.createElement("input");
+        inp.type = "text"; inp.id = "ovTextInput"; inp.placeholder = "输入文字内容（支持中文）";
+        inp.style.cssText = "width:100%;background:var(--panel3);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px 11px;font-size:14px;outline:none";
+        p.appendChild(inp);
+        var sw = document.createElement("div"); sw.className = "swatches"; sw.style.marginTop = "10px";
+        var colors = ["#ffffff","#111111","#ffd93b","#ff5147","#2f7cf6","#35c26e"];
+        var curColor = colors[0];
+        colors.forEach(function(col, i){
+          var b = document.createElement("button");
+          b.style.background = col; if (i === 0) b.className = "on";
+          b.addEventListener("click", function(){
+            curColor = col;
+            sw.querySelectorAll("button").forEach(function(x){ x.classList.remove("on"); });
+            b.classList.add("on");
+          });
+          sw.appendChild(b);
+        });
+        p.appendChild(sw);
+        var sf = document.createElement("div"); sf.className = "field"; sf.style.marginTop = "12px"; sf.style.marginBottom = "6px";
+        var sfl = document.createElement("div"); sfl.className = "flabel";
+        sfl.innerHTML = "<span>字号（相对画面高度）</span><b>9%</b>";
+        var srg = document.createElement("input");
+        srg.type = "range"; srg.min = 4; srg.max = 22; srg.value = 9;
+        srg.addEventListener("input", function(){ sfl.querySelector("b").textContent = this.value + "%"; });
+        sf.appendChild(sfl); sf.appendChild(srg);
+        p.appendChild(sf);
+        var ab = document.createElement("div"); ab.className = "btn-row";
+        var add = document.createElement("button"); add.className = "btn blue"; add.textContent = "添加文字到预览";
+        add.addEventListener("click", function(){
+          var txt = inp.value.trim();
+          if (!txt){ toast("先输入文字内容"); inp.focus(); return; }
+          addTextOverlay(txt, curColor, parseInt(srg.value, 10) / 100);
+        });
+        ab.appendChild(add); p.appendChild(ab);
+        p.appendChild(ovList("text"));
+        p.appendChild(panelNote("文字导出时用系统字体渲染成透明 PNG 再叠加（不走 drawtext，中文没问题）。可加多条，每条独立时间窗。"));
+      } else if (t === "subtitle"){
+        var st = state.project.subtitle;
+        var ta = document.createElement("textarea");
+        ta.id = "subTextInput"; ta.placeholder = "输入字幕内容（支持中文，可换行分行）";
+        ta.rows = 2;
+        ta.style.cssText = "width:100%;background:var(--panel3);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px 11px;font-size:14px;outline:none;resize:vertical";
+        p.appendChild(ta);
+        var ab = document.createElement("div"); ab.className = "btn-row"; ab.style.marginTop = "10px";
+        var add = document.createElement("button"); add.className = "btn blue"; add.textContent = "＋ 添加字幕";
+        add.addEventListener("click", function(){
+          var txt = ta.value.trim();
+          if (!txt){ toast("先输入字幕内容"); ta.focus(); return; }
+          addSubtitle(txt);
+          ta.value = "";
+        });
+        ab.appendChild(add); p.appendChild(ab);
+        /* 样式：字号 / 颜色 / 黑底 */
+        var sf = document.createElement("div"); sf.className = "field"; sf.style.marginTop = "12px"; sf.style.marginBottom = "6px";
+        var sfl = document.createElement("div"); sfl.className = "flabel";
+        sfl.innerHTML = "<span>字号（相对画面高度）</span><b>" + Math.round(st.size * 100) + "%</b>";
+        var srg = document.createElement("input");
+        srg.type = "range"; srg.min = 3; srg.max = 10; srg.value = Math.round(st.size * 100);
+        srg.addEventListener("input", function(){
+          st.size = parseInt(this.value, 10) / 100;
+          sfl.querySelector("b").textContent = this.value + "%";
+          renderSubDisplay();
+        });
+        sf.appendChild(sfl); sf.appendChild(srg);
+        p.appendChild(sf);
+        var sw = document.createElement("div"); sw.className = "swatches"; sw.style.marginTop = "4px";
+        ["#ffffff","#ffd93b","#ff5147","#2f7cf6","#35c26e","#111111"].forEach(function(col, i){
+          var b = document.createElement("button");
+          b.style.background = col; if (col === st.color) b.className = "on";
+          b.addEventListener("click", function(){
+            st.color = col;
+            sw.querySelectorAll("button").forEach(function(x){ x.classList.remove("on"); });
+            b.classList.add("on");
+            renderSubDisplay();
+          });
+          sw.appendChild(b);
+        });
+        p.appendChild(sw);
+        var bgRow = document.createElement("div"); bgRow.className = "btn-row"; bgRow.style.marginTop = "10px";
+        var bgT = document.createElement("button"); bgT.className = "btn" + (st.bg !== false ? " blue" : "");
+        bgT.textContent = st.bg !== false ? "黑底：开" : "黑底：关";
+        bgT.addEventListener("click", function(){
+          st.bg = !(st.bg !== false);
+          bgT.textContent = st.bg ? "黑底：开" : "黑底：关";
+          bgT.className = "btn" + (st.bg ? " blue" : "");
+          renderSubDisplay();
+        });
+        bgRow.appendChild(bgT); p.appendChild(bgRow);
+        p.appendChild(subList());
+        var srtRow = document.createElement("div"); srtRow.className = "btn-row"; srtRow.style.marginTop = "10px";
+        var impB = document.createElement("button"); impB.className = "btn"; impB.textContent = "导入 SRT";
+        impB.addEventListener("click", function(){ $("srtInput").click(); });
+        var expB = document.createElement("button"); expB.className = "btn"; expB.textContent = "导出 SRT";
+        expB.addEventListener("click", exportSrt);
+        srtRow.appendChild(impB); srtRow.appendChild(expB); p.appendChild(srtRow);
+        p.appendChild(panelNote("字幕固定底部居中显示，导出时烧录进画面（系统字体渲染，中文没问题）。点列表可选中改时间，SRT 可导入/导出。"));
+      }
+    }
+    function ovList(kind){
+      var wrap = document.createElement("div");
+      state.overlays.filter(function(o){ return o.kind === kind; }).forEach(function(ov){
+        var it = document.createElement("div");
+        it.className = "ov-list-item" + (ov.id === state.selectedOverlayId ? " on" : "");
+        var g = document.createElement("span"); g.className = "grow";
+        g.textContent = (ov.kind === "sticker" ? (ov.emoji || "图片贴纸") : ov.text) + " · " + fmt(ov.start) + "–" + fmt(ov.end);
+        var del = document.createElement("button"); del.textContent = "删除";
+        del.addEventListener("click", function(e){
+          e.stopPropagation();
+          state.overlays = state.overlays.filter(function(x){ return x.id !== ov.id; });
+          if (state.selectedOverlayId === ov.id) state.selectedOverlayId = null;
+          renderOverlays(); renderOvEdit(); renderToolPanel();
+        });
+        it.appendChild(g); it.appendChild(del);
+        it.addEventListener("click", function(){
+          state.selectedOverlayId = ov.id;
+          setPlayhead(Math.min(ov.start, totalDur()));
+          renderOverlays(); renderOvEdit(); renderToolPanel();
+        });
+        wrap.appendChild(it);
+      });
+      return wrap;
+    }
+    /* 覆盖层编辑（选中贴纸/文字时出现在剪辑面板下方） */
+    function renderOvEdit(){
+      var box = $("ovEdit");
+      box.innerHTML = "";
+      var ov = overlayById(state.selectedOverlayId);
+      if (!ov) return;
+      var panel = document.createElement("div");
+      panel.className = "toolpanel on";
+      var title = document.createElement("div");
+      title.className = "clip-info";
+      title.innerHTML = '<span class="nm">' + (ov.kind === "sticker" ? "贴纸" : "文字") + '设置</span><span class="rg">' +
+        (ov.kind === "sticker" ? (ov.emoji || "图片") : ov.text) + "</span>";
+      panel.appendChild(title);
+      var tot = Math.max(totalDur(), ov.end, 1);
+      function slider(label, val, min, max, step, fmtFn, onInput){
+        var f = document.createElement("div"); f.className = "field"; f.style.marginBottom = "9px";
+        var fl = document.createElement("div"); fl.className = "flabel";
+        fl.innerHTML = "<span>" + label + "</span><b>" + fmtFn(val) + "</b>";
+        var rg = document.createElement("input");
+        rg.type = "range"; rg.min = min; rg.max = max; rg.step = step; rg.value = val;
+        rg.addEventListener("input", function(){
+          onInput(parseFloat(this.value));
+          fl.querySelector("b").textContent = fmtFn(parseFloat(this.value));
+        });
+        f.appendChild(fl); f.appendChild(rg);
+        panel.appendChild(f);
+      }
+      slider(ov.kind === "sticker" ? "大小（相对画面高度）" : "字号（相对画面高度）", Math.round(ov.size * 100), 4, 50, 1,
+        function(v){ return v + "%"; },
+        function(v){ ov.size = v / 100; renderOverlays(); });
+      slider("开始时间", Math.round(ov.start * 10) / 10, 0, Math.round(tot * 10) / 10, 0.1,
+        function(v){ return fmt(v); },
+        function(v){ ov.start = Math.min(v, ov.end - 0.1); renderOvVisibility(); });
+      slider("结束时间", Math.round(ov.end * 10) / 10, 0, Math.round(tot * 10) / 10, 0.1,
+        function(v){ return fmt(v); },
+        function(v){ ov.end = Math.max(v, ov.start + 0.1); renderOvVisibility(); });
+      var br = document.createElement("div"); br.className = "btn-row";
+      var del = document.createElement("button"); del.className = "btn danger"; del.textContent = "删除这个" + (ov.kind === "sticker" ? "贴纸" : "文字");
+      del.addEventListener("click", function(){
+        state.overlays = state.overlays.filter(function(x){ return x.id !== ov.id; });
+        state.selectedOverlayId = null;
+        renderOverlays(); renderOvEdit(); renderToolPanel();
+      });
+      var done = document.createElement("button"); done.className = "btn"; done.textContent = "完成";
+      done.addEventListener("click", function(){
+        state.selectedOverlayId = null;
+        renderOverlays(); renderOvEdit();
+      });
+      br.appendChild(del); br.appendChild(done);
+      panel.appendChild(br);
+      panel.appendChild(panelNote("在预览画面上按住即可拖动位置；时间窗与时间线同一口径，导出时只在该窗内显示。"));
+      box.appendChild(panel);
+    }
+    /* ================= 字幕：添加 / 列表 / 选中编辑 / SRT ================= */
+    function addSubtitle(text){
+      var tot = totalDur();
+      var s = Math.min(state.playhead, Math.max(0, tot - 0.3));
+      var e = tot > 0 ? Math.min(s + 2, tot) : s + 2;
+      if (e - s < 0.3) e = s + 0.3;
+      var sub = { id:uid(), text:text, start:Math.round(s * 10) / 10, end:Math.round(e * 10) / 10 };
+      state.subtitles.push(sub);
+      state.subtitles.sort(function(a, b){ return a.start - b.start; });
+      state.selectedSubtitleId = sub.id;
+      renderSubDisplay(); renderSubEdit(); renderToolPanel();
+      toast("字幕已添加，默认从播放位置开始显示 2 秒，可在列表里改时间");
+    }
+    function subList(){
+      var wrap = document.createElement("div");
+      state.subtitles.slice().sort(function(a, b){ return a.start - b.start; }).forEach(function(sub){
+        var it = document.createElement("div");
+        it.className = "sub-list-item" + (sub.id === state.selectedSubtitleId ? " on" : "");
+        var g = document.createElement("span"); g.className = "grow"; g.textContent = sub.text.split("\n")[0];
+        var tm = document.createElement("span"); tm.className = "tm"; tm.textContent = fmt(sub.start) + "–" + fmt(sub.end);
+        var del = document.createElement("button"); del.textContent = "删除";
+        del.addEventListener("click", function(e){
+          e.stopPropagation();
+          state.subtitles = state.subtitles.filter(function(x){ return x.id !== sub.id; });
+          if (state.selectedSubtitleId === sub.id) state.selectedSubtitleId = null;
+          renderSubDisplay(); renderSubEdit(); renderToolPanel();
+        });
+        it.appendChild(g); it.appendChild(tm); it.appendChild(del);
+        it.addEventListener("click", function(){
+          state.selectedSubtitleId = sub.id;
+          setPlayhead(Math.min(sub.start, totalDur()));
+          renderSubDisplay(); renderSubEdit(); renderToolPanel();
+        });
+        wrap.appendChild(it);
+      });
+      if (!state.subtitles.length){
+        var emp = document.createElement("p"); emp.className = "hint"; emp.textContent = "还没有字幕，在上方输入后添加。";
+        wrap.appendChild(emp);
+      }
+      return wrap;
+    }
+    function renderSubEdit(){
+      var box = $("subEdit");
+      box.innerHTML = "";
+      var sub = subtitleById(state.selectedSubtitleId);
+      if (!sub) return;
+      var panel = document.createElement("div");
+      panel.className = "toolpanel on";
+      var title = document.createElement("div");
+      title.className = "clip-info";
+      title.innerHTML = '<span class="nm">字幕设置</span><span class="rg">' + fmt(sub.start) + "–" + fmt(sub.end) + "</span>";
+      panel.appendChild(title);
+      var ta = document.createElement("textarea");
+      ta.rows = 2; ta.value = sub.text;
+      ta.style.cssText = "width:100%;background:var(--panel3);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px 11px;font-size:14px;outline:none;resize:vertical;margin-bottom:9px";
+      ta.addEventListener("input", function(){ sub.text = ta.value; renderSubDisplay(); renderToolPanel(); });
+      panel.appendChild(ta);
+      var tot = Math.max(totalDur(), sub.end, 1);
+      function slider(label, val, min, max, step, onInput){
+        var f = document.createElement("div"); f.className = "field"; f.style.marginBottom = "9px";
+        var fl = document.createElement("div"); fl.className = "flabel";
+        fl.innerHTML = "<span>" + label + "</span><b>" + fmt(val) + "</b>";
+        var rg = document.createElement("input");
+        rg.type = "range"; rg.min = min; rg.max = max; rg.step = step; rg.value = val;
+        rg.addEventListener("input", function(){
+          onInput(parseFloat(this.value));
+          fl.querySelector("b").textContent = fmt(parseFloat(this.value));
+        });
+        rg.addEventListener("change", function(){ renderToolPanel(); });
+        f.appendChild(fl); f.appendChild(rg);
+        panel.appendChild(f);
+      }
+      slider("开始时间", Math.round(sub.start * 10) / 10, 0, Math.round(tot * 10) / 10, 0.1,
+        function(v){ sub.start = Math.min(v, sub.end - 0.1); renderSubDisplay(); });
+      slider("结束时间", Math.round(sub.end * 10) / 10, 0, Math.round(tot * 10) / 10, 0.1,
+        function(v){ sub.end = Math.max(v, sub.start + 0.1); renderSubDisplay(); });
+      var br = document.createElement("div"); br.className = "btn-row";
+      var del = document.createElement("button"); del.className = "btn danger"; del.textContent = "删除这条字幕";
+      del.addEventListener("click", function(){
+        state.subtitles = state.subtitles.filter(function(x){ return x.id !== sub.id; });
+        state.selectedSubtitleId = null;
+        renderSubDisplay(); renderSubEdit(); renderToolPanel();
+      });
+      var done = document.createElement("button"); done.className = "btn"; done.textContent = "完成";
+      done.addEventListener("click", function(){
+        state.selectedSubtitleId = null;
+        renderSubEdit(); renderToolPanel();
+      });
+      br.appendChild(del); br.appendChild(done);
+      panel.appendChild(br);
+      box.appendChild(panel);
+    }
+    function srtTime(t){
+      t = Math.max(0, t);
+      var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = Math.floor(t % 60), ms = Math.floor(t % 1 * 1000);
+      function p2(n){ return (n < 10 ? "0" : "") + n; }
+      function p3(n){ return (n < 10 ? "00" : n < 100 ? "0" : "") + n; }
+      return p2(h) + ":" + p2(m) + ":" + p2(s) + "," + p3(ms);
+    }
+    function parseSrtTime(str){
+      var m = str.trim().match(/(\d+):(\d+):(\d+)[,.](\d+)/);
+      if (!m) return null;
+      return parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10) + parseInt(m[4], 10) / 1000;
+    }
+    function exportSrt(){
+      var subs = state.subtitles.slice().sort(function(a, b){ return a.start - b.start; })
+        .filter(function(s){ return s.end > s.start && s.text.trim(); });
+      if (!subs.length){ toast("还没有字幕可导出"); return; }
+      var out = subs.map(function(s, i){
+        return (i + 1) + "\n" + srtTime(s.start) + " --> " + srtTime(s.end) + "\n" + s.text.trim() + "\n";
+      }).join("\n");
+      downloadBlob(new Blob(["\ufeff" + out], { type: "text/plain;charset=utf-8" }), "EasyEdit字幕.srt");
+      toast("SRT 字幕已开始下载");
+    }
+    function importSrtFile(file){
+      var rd = new FileReader();
+      rd.onload = function(){
+        var txt = String(rd.result || "").replace(/^\ufeff/, "").replace(/\r\n?/g, "\n");
+        var blocks = txt.split(/\n\s*\n/);
+        var added = 0;
+        blocks.forEach(function(b){
+          var lines = b.split("\n").filter(function(l){ return l.trim().length; });
+          if (lines.length < 2) return;
+          var ti = lines[0].match(/^\d+$/) ? 1 : 0;
+          if (ti >= lines.length) return;
+          var parts = lines[ti].split("-->");
+          if (parts.length !== 2) return;
+          var st = parseSrtTime(parts[0]), en = parseSrtTime(parts[1]);
+          if (st === null || en === null || en <= st) return;
+          var tx = lines.slice(ti + 1).join("\n").trim();
+          if (!tx) return;
+          state.subtitles.push({ id:uid(), text:tx,
+            start:Math.round(st * 10) / 10, end:Math.round(en * 10) / 10 });
+          added++;
+        });
+        state.subtitles.sort(function(a, b){ return a.start - b.start; });
+        state.selectedSubtitleId = null;
+        renderSubDisplay(); renderSubEdit(); renderToolPanel();
+        toast(added ? ("已导入 " + added + " 条字幕") : "没有解析出字幕，检查 SRT 格式");
+      };
+      rd.readAsText(file, "utf-8");
+    }
+
+    /* ================= 顶部显性键（横屏/桌面） + 快捷键 ================= */
+    function updateEditBar(){
+      var has = state.clips.length > 0;
+      var dis = !(has && clipIndexAt(state.playhead) >= 0);
+      $("btnSplitTop").disabled = dis;
+      $("btnSetIn").disabled = dis;
+      $("btnSetOut").disabled = dis;
+      $("btnDelTop").disabled = !clipById(state.selectedClipId);
+    }
+    window.updateEditBar = updateEditBar;
+    $("btnSplitTop").addEventListener("click", splitAtPlayhead);
+    $("btnSetIn").addEventListener("click", setInPoint);
+    $("btnSetOut").addEventListener("click", setOutPoint);
+    $("btnDelTop").addEventListener("click", deleteSelectedClip);
+    document.addEventListener("keydown", function(e){
+      var tag = (e.target && e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if ($("overlay").classList.contains("on") || $("confirmOverlay").classList.contains("on")) return;
+      var k = e.key;
+      if (k === " "){
+        e.preventDefault();
+        if (state.playing) pausePreview(); else playPreview();
+      } else if (k === "Delete" || k === "Backspace"){
+        if (clipById(state.selectedClipId)){ e.preventDefault(); deleteSelectedClip(); }
+      } else if ((k === "k" || k === "K") && (e.ctrlKey || e.metaKey)){
+        e.preventDefault(); splitAtPlayhead();
+      } else if ((k === "s" || k === "S") && !e.ctrlKey && !e.metaKey){
+        splitAtPlayhead();
+      } else if ((k === "i" || k === "I") && !e.ctrlKey && !e.metaKey){
+        setInPoint();
+      } else if ((k === "o" || k === "O") && !e.ctrlKey && !e.metaKey){
+        setOutPoint();
+      } else if (k === "ArrowLeft"){
+        e.preventDefault(); pausePreview();
+        setPlayhead(state.playhead - (e.shiftKey ? 1 : 1 / 30));
+      } else if (k === "ArrowRight"){
+        e.preventDefault(); pausePreview();
+        setPlayhead(state.playhead + (e.shiftKey ? 1 : 1 / 30));
+      } else if (k === "Home"){
+        e.preventDefault(); setPlayhead(0);
+      } else if (k === "End"){
+        e.preventDefault(); setPlayhead(totalDur());
+      }
+    });
+    var resizeTimer = 0;
+    window.addEventListener("resize", function(){
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function(){
+        renderTimeline(); centerScrollOnPlayhead(); layoutPreview();
+      }, 120);
+    });
+    </script>
+
+    <script>
+    "use strict";
+    /* ================= FFmpeg.wasm 按需加载（主备双源，首屏零外部请求） ================= */
+    var CDN_BASES = ["vendor"]; /* 离线版：FFmpeg 引擎从本地 vendor 目录加载，无需联网 */
+    function urlsFor(base){
+      return {
+        ffmpegJs:  base + "/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js",
+        utilJs:    base + "/@ffmpeg/util@0.12.1/dist/umd/index.js",
+        workerJs:  base + "/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js",
+        coreJs:    base + "/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
+        coreWasm:  base + "/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm"
+      };
+    }
+    var ff = null, ffReady = false, ffLoading = null;
+    var task = { cancel:false, stepBase:0, stepWeight:1, onDone:null };
+
+    var loadedScripts = {};
+    function loadScript(src){
+      if (loadedScripts[src]) return Promise.resolve();
+      return new Promise(function(res, rej){
+        var s = document.createElement("script");
+        var to = setTimeout(function(){ rej(new Error("脚本加载超时：" + src)); }, 25000);
+        s.src = src;
+        s.onload = function(){ clearTimeout(to); loadedScripts[src] = 1; res(); };
+        s.onerror = function(){ clearTimeout(to); rej(new Error("脚本加载失败：" + src)); };
+        document.head.appendChild(s);
+      });
+    }
+    /* 带停滞检测的下载：20 秒收不到新数据即中止，交给上层切换备用源 */
+    function fetchBlobProgress(url, mime, onp){
+      return new Promise(function(resolve, reject){
+        var ctrl = ("AbortController" in window) ? new AbortController() : null;
+        var stallTimer = null, settled = false;
+        function fail(err){ if (!settled){ settled = true; if (stallTimer) clearTimeout(stallTimer); reject(err); } }
+        function armStall(){
+          if (stallTimer) clearTimeout(stallTimer);
+          stallTimer = setTimeout(function(){
+            if (ctrl){ try { ctrl.abort(); } catch(e){} }
+            fail(new Error("下载停滞超时：" + url));
+          }, 20000);
+        }
+        armStall();
+        fetch(url, ctrl ? { signal: ctrl.signal } : undefined).then(function(r){
+          if (!r.ok) throw new Error("下载失败 HTTP " + r.status);
+          var total = parseInt(r.headers.get("content-length") || "0", 10);
+          if (!r.body || !r.body.getReader) return r.blob();
+          var reader = r.body.getReader(), chunks = [], got = 0;
+          function pump(){
+            return reader.read().then(function(x){
+              if (x.done) return new Blob(chunks, { type: mime });
+              armStall();
+              chunks.push(x.value); got += x.value.length;
+              if (total) onp(got / total);
+              return pump();
+            });
+          }
+          return pump();
+        }).then(function(b){
+          if (stallTimer) clearTimeout(stallTimer);
+          if (!settled){ settled = true; resolve(URL.createObjectURL(b)); }
+        }).catch(fail);
+      });
+    }
+
+    /* 任务浮层 */
+    function ovShow(title){
+      $("ovTitle").textContent = title;
+      $("ovStatus").textContent = "准备中…"; $("ovStatus").classList.remove("err");
+      $("ovBar").style.width = "0%"; $("ovPct").textContent = "0%";
+      $("ovCancel").style.display = ""; $("ovRetry").style.display = "none"; $("ovClose").style.display = "none";
+      $("overlay").classList.add("on");
+      task.cancel = false;
+    }
+    function ovStatus(t){ $("ovStatus").textContent = t; }
+    function ovProgress(f){
+      f = Math.max(0, Math.min(1, f));
+      $("ovBar").style.width = (f * 100).toFixed(0) + "%";
+      $("ovPct").textContent = (f * 100).toFixed(0) + "%";
+    }
+    function ovError(msg, retryFn){
+      $("ovStatus").textContent = msg; $("ovStatus").classList.add("err");
+      $("ovCancel").style.display = "none";
+      $("ovClose").style.display = "";
+      if (retryFn){ $("ovRetry").style.display = ""; task.onDone = retryFn; }
+    }
+    function ovDone(){ $("overlay").classList.remove("on"); }
+    $("ovClose").addEventListener("click", ovDone);
+    $("ovRetry").addEventListener("click", function(){ var f = task.onDone; task.onDone = null; if (f) f(); });
+    $("ovCancel").addEventListener("click", function(){
+      task.cancel = true;
+      ovStatus("正在取消…");
+      if (ff){ try { ff.terminate(); } catch(e){} ff = null; ffReady = false; ffLoading = null; }
+      setTimeout(ovDone, 350);
+    });
+
+    async function loadFFmpegFrom(base, stepLabel){
+      var U = urlsFor(base);
+      await loadScript(U.utilJs);
+      await loadScript(U.ffmpegJs);
+      if (!window.FFmpegWASM) throw new Error("FFmpeg 脚本未就绪");
+      if (!window.FFmpegUtil) throw new Error("FFmpeg 工具脚本未就绪");
+      var parts = [
+        { url: U.coreJs,   mime: "text/javascript",   w: 0.02, key: "coreURL" },
+        { url: U.coreWasm, mime: "application/wasm",  w: 0.90, key: "wasmURL" },
+        { url: U.workerJs, mime: "text/javascript",   w: 0.08, key: "classWorkerURL" }
+      ];
+      var cfg = {}, acc = 0;
+      for (var i=0;i<parts.length;i++){
+        var p = parts[i];
+        var b0 = acc;
+        cfg[p.key] = await fetchBlobProgress(p.url, p.mime, function(f){ ovProgress(b0 + f * p.w); });
+        acc += p.w;
+        checkCancel();
+      }
+      ovStatus(stepLabel || "引擎加载中…");
+      var inst = new window.FFmpegWASM.FFmpeg();
+      inst.on("progress", function(e){
+        if (e && typeof e.progress === "number"){
+          ovProgress(task.stepBase + Math.max(0, Math.min(1, e.progress)) * task.stepWeight);
+        }
+      });
+      await inst.load(cfg);
+      return inst;
+    }
+    function ensureFFmpeg(stepLabel){
+      if (ffReady && ff) return Promise.resolve(ff);
+      if (ffLoading) return ffLoading;
+      ffLoading = (async function(){
+        var lastErr = null;
+        for (var s=0; s<CDN_BASES.length; s++){
+          try {
+            ovStatus(s === 0
+              ? "正在加载本地剪辑引擎（离线版，无需下载）…"
+              : "主下载源无响应，正在切换备用源重新下载…");
+            var inst = await loadFFmpegFrom(CDN_BASES[s], stepLabel);
+            ff = inst; ffReady = true;
+            return inst;
+          } catch (e) {
+            lastErr = e;
+            if (task.cancel) throw new Error("已取消");
+          }
+        }
+        throw new Error("剪辑引擎下载失败（主、备两个下载源都试过了）：" + (lastErr && lastErr.message ? lastErr.message : lastErr));
+      })().catch(function(err){
+        ffLoading = null; ff = null; ffReady = false;
+        throw err;
+      });
+      return ffLoading;
+    }
+    function setStep(base, weight, label){
+      task.stepBase = base; task.stepWeight = weight;
+      if (label) ovStatus(label);
+      ovProgress(base);
+    }
+    function checkCancel(){
+      if (task.cancel) throw new Error("已取消");
+    }
+    async function fsDel(inst, names){
+      for (var i=0;i<names.length;i++){ try { await inst.deleteFile(names[i]); } catch(e){} }
+    }
+
+    /* ================= ★ 提取音频 ================= */
+    async function extractAudio(mediaId){
+      var m = mediaById(mediaId); if (!m) return;
+      pausePreview();
+      ovShow("提取音频");
+      try {
+        var inst = await ensureFFmpeg("正在提取「" + m.name + "」的音轨…");
+        checkCancel();
+        setStep(0.05, 0.9, "正在提取「" + m.name + "」的音轨…");
+        var ext = (m.name.match(/\.[a-z0-9]+$/i) || [".mp4"])[0];
+        var inName = "extract_in" + ext;
+        await inst.writeFile(inName, await window.FFmpegUtil.fetchFile(m.file));
+        var code = await inst.exec(["-i", inName, "-vn", "-map", "0:a:0", "-c:a", "libmp3lame", "-q:a", "3", "extract_out.mp3"]);
+        if (task.cancel){ await fsDel(inst, [inName, "extract_out.mp3"]); return; }
+        if (code !== 0){
+          await fsDel(inst, [inName, "extract_out.mp3"]);
+          ovError("这个视频里没找到可提取的音轨（可能本身就是无声视频）。", null);
+          return;
+        }
+        var data = await inst.readFile("extract_out.mp3");
+        var blob = new Blob([data.buffer], { type: "audio/mpeg" });
+        await fsDel(inst, [inName, "extract_out.mp3"]);
+        var baseName = m.name.replace(/\.[^.]+$/, "");
+        var entry = { id: uid(), name: baseName + " 音频.mp3", blob: blob, url: URL.createObjectURL(blob), duration: 0, fromName: m.name };
+        state.audios.push(entry);
+        probeAudioDur(entry);
+        renderAudios();
+        ovProgress(1);
+        ovDone();
+        toast("音频已提取，去「音频」里试听或下载");
+        switchTab("audio");
+      } catch (err){
+        if (task.cancel || (err && err.message === "已取消")){ ovDone(); return; }
+        ovError("提取失败：" + (err && err.message ? err.message : err) + "。可能是网络问题导致引擎没下载下来，检查网络后重试。", function(){ extractAudio(mediaId); });
+      }
+    }
+
+    /* ================= 导出：滤镜链组装（顺序 旋转→裁剪→变焦→缩放填充→滤镜） ================= */
+    $("btnExport").addEventListener("click", function(){ exportVideo(); });
+
+    function rotateFilterPrefix(rot){
+      if (rot === 90) return "transpose=1";
+      if (rot === 270) return "transpose=2";
+      if (rot === 180) return "hflip,vflip";
+      return "";
+    }
+    /* atempo 单步只支持 0.5–2，链式分解任意倍速 */
+    function atempoChain(speed){
+      var parts = [], r = speed;
+      while (r > 2){ parts.push("atempo=2.0000"); r /= 2; }
+      while (r < 0.5){ parts.push("atempo=0.5000"); r /= 0.5; }
+      parts.push("atempo=" + r.toFixed(4));
+      return parts.join(",");
+    }
+    /* 变焦 zoompan：按片段帧数线性推/拉（与预览 scale 进度对齐 1.0↔1.3） */
+    function zoompanFilter(c, cr){
+      var N = Math.max(1, Math.round(clipDur(c) * 30));
+      var z = c.zoom === "in"
+        ? "min(1+0.3*on/" + N + ",1.3)"
+        : "max(1.3-0.3*on/" + N + ",1)";
+      return "zoompan=z='" + z + "':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=" + cr.w + "x" + cr.h + ":fps=30";
+    }
+    /* 单片段画面链（不含 scale/pad 与 format）：倒放→变速→旋转→裁剪→fps→变焦→色彩滤镜 */
+    function clipVideoChain(c){
+      var m = mediaById(c.mediaId);
+      var parts = [];
+      if (c.reverse) parts.push("reverse");
+      if ((c.speed || 1) !== 1) parts.push("setpts=PTS/" + (c.speed || 1));
+      var rp = rotateFilterPrefix(c.rot || 0);
+      if (rp) parts.push(rp);
+      var cd = clipContentDims(c);
+      if ((c.cropRatio || "orig") !== "orig") parts.push("crop=" + cd.cr.w + ":" + cd.cr.h + ":" + cd.cr.x + ":" + cd.cr.y);
+      parts.push("fps=30");
+      if (c.zoom && c.zoom !== "none") parts.push(zoompanFilter(c, cd.cr));
+      var f = filterById(c.filter || "none");
+      if (f.ff) parts.push(f.ff);
+      return parts.join(",");
+    }
+    /* 单片段原声链：倒放→变速→音量→原声增强(loudnorm)→重采样 */
+    function clipAudioChain(c){
+      var parts = [];
+      if (c.reverse) parts.push("areverse");
+      if ((c.speed || 1) !== 1) parts.push(atempoChain(c.speed || 1));
+      parts.push("volume=" + (c.volume || 0).toFixed(3));
+      if (c.enhance || state.project.enhanceAll) parts.push("loudnorm=I=-16:TP=-1.5:LRA=11");
+      parts.push("aresample=48000");
+      return parts.join(",");
+    }
+    /* 文字 → 透明 PNG（canvas + 系统字体，支持中文，不走 drawtext） */
+    function textPngBlob(ov, H){
+      return new Promise(function(res){
+        var px = Math.max(12, Math.round(ov.size * H));
+        var cv = document.createElement("canvas");
+        var cx = cv.getContext("2d");
+        var font = "700 " + px + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif';
+        cx.font = font;
+        var tw = Math.ceil(cx.measureText(ov.text).width);
+        cv.width = tw + Math.round(px * 0.5);
+        cv.height = Math.round(px * 1.5);
+        cx = cv.getContext("2d");
+        cx.font = font;
+        cx.textBaseline = "middle";
+        cx.shadowColor = "rgba(0,0,0,.45)"; cx.shadowBlur = Math.max(2, px * 0.08);
+        cx.fillStyle = ov.color;
+        cx.fillText(ov.text, Math.round(px * 0.25), cv.height / 2);
+        if (cv.toBlob) cv.toBlob(function(b){ res(b); }, "image/png");
+        else res(null);
+      });
+    }
+
+    async function exportVideo(){
+      if (!state.clips.length){ toast("时间线是空的"); return; }
+      pausePreview();
+      ovShow("导出视频");
+      var written = [];
+      try {
+        var inst = await ensureFFmpeg("正在准备导出…");
+        checkCancel();
+        var fetchFile = window.FFmpegUtil.fetchFile;
+        var tot = totalDur();
+        var canvas = canvasDims();
+        var W = canvas.w, H = canvas.h;
+        var padColor = state.project.border === "white" ? "white" : "black";
+        var blurBg = state.project.border === "blur";
+        var n = state.clips.length;
+        var segNames = [];
+        for (var i=0;i<n;i++){
+          checkCancel();
+          var c = state.clips[i];
+          var m = mediaById(c.mediaId); if (!m) throw new Error("有片段的素材已不存在");
+          var base = 0.03 + (i / n) * 0.6;
+          var each = 0.6 / n;
+          var ext = (m.name.match(/\.[a-z0-9]+$/i) || [".mp4"])[0];
+          var inN = "in" + i + ext, vN = "v" + i + ".mp4", aN = "a" + i + ".m4a", sN = "seg" + i + ".mp4";
+          written.push(inN, vN, aN, sN);
+          await inst.writeFile(inN, await fetchFile(m.file));
+          var srcLen = srcDur(c).toFixed(3);       // 输入侧读源时长（秒）
+          var outLen = clipDur(c).toFixed(3);      // 输出时长 = 源时长 / speed
+          var vchain = clipVideoChain(c);
+          setStep(base, each * 0.55, "处理片段 " + (i+1) + "/" + n + "（画面）…");
+          var codeV;
+          if (blurBg){
+            var fc = "[0:v]" + vchain + "[base];[base]split=2[bgin][fgin];" +
+              "[bgin]scale=" + W + ":" + H + ":force_original_aspect_ratio=increase,crop=" + W + ":" + H + ",gblur=sigma=40[bg];" +
+              "[fgin]scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease[fg];" +
+              "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p[vout]";
+            codeV = await inst.exec(["-ss", c.inn.toFixed(3), "-t", srcLen, "-i", inN,
+              "-filter_complex", fc, "-map", "[vout]",
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an", "-metadata:s:v:0", "rotate=0", vN]);
+          } else {
+            var vf = (vchain ? vchain + "," : "") +
+              "scale=" + W + ":" + H + ":force_original_aspect_ratio=decrease," +
+              "pad=" + W + ":" + H + ":(ow-iw)/2:(oh-ih)/2:color=" + padColor + ",setsar=1,format=yuv420p";
+            codeV = await inst.exec(["-ss", c.inn.toFixed(3), "-t", srcLen, "-i", inN, "-vf", vf,
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an", "-metadata:s:v:0", "rotate=0", vN]);
+          }
+          if (codeV !== 0) throw new Error("片段 " + (i+1) + " 画面处理失败");
+          checkCancel();
+          setStep(base + each * 0.55, each * 0.3, "处理片段 " + (i+1) + "/" + n + "（声音）…");
+          var made = false;
+          if (!c.muted && c.volume > 0){
+            var codeA = await inst.exec(["-ss", c.inn.toFixed(3), "-t", srcLen, "-i", inN, "-map", "0:a:0",
+              "-af", clipAudioChain(c), "-c:a", "aac", "-b:a", "160k", aN]);
+            made = (codeA === 0);
+          }
+          if (!made){
+            await inst.exec(["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000", "-t", outLen, "-c:a", "aac", "-b:a", "160k", aN]);
+          }
+          checkCancel();
+          setStep(base + each * 0.85, each * 0.15, "合并片段 " + (i+1) + "/" + n + "…");
+          var codeM = await inst.exec(["-i", vN, "-i", aN, "-c", "copy", "-shortest", sN]);
+          if (codeM !== 0) throw new Error("片段 " + (i+1) + " 合并失败");
+          segNames.push(sN);
+          try { await inst.deleteFile(inN); } catch(e){}
+        }
+        checkCancel();
+        setStep(0.63, 0.12, "正在拼接全部片段…");
+        var listTxt = segNames.map(function(s){ return "file '" + s + "'"; }).join("\n");
+        await inst.writeFile("list.txt", new TextEncoder().encode(listTxt));
+        written.push("list.txt", "joined.mp4");
+        var codeC = await inst.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "joined.mp4"]);
+        if (codeC !== 0) throw new Error("片段拼接失败");
+        var outName = "joined.mp4";
+        // 背景音乐
+        if (state.bgm){
+          var bgmA = audioById(state.bgm.audioId);
+          if (bgmA){
+            checkCancel();
+            setStep(0.75, 0.12, state.bgm.mode === "mix" ? "正在混合背景音乐…" : "正在替换为背景音乐…");
+            await inst.writeFile("bgm.mp3", await fetchFile(bgmA.blob));
+            written.push("bgm.mp3", "final.mp4");
+            var fcb;
+            if (state.bgm.mode === "mix"){
+              fcb = "[1:a]atrim=0:" + tot.toFixed(3) + ",volume=" + state.bgm.volume.toFixed(3) + "[b];[0:a][b]amix=inputs=2:duration=first:dropout_transition=0[aout]";
+            } else {
+              fcb = "[1:a]atrim=0:" + tot.toFixed(3) + ",volume=" + state.bgm.volume.toFixed(3) + "[aout]";
+            }
+            var codeB = await inst.exec(["-i", "joined.mp4", "-stream_loop", "-1", "-i", "bgm.mp3", "-filter_complex", fcb, "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-b:a", "160k", "final.mp4"]);
+            if (codeB !== 0) throw new Error("背景音乐处理失败");
+            outName = "final.mp4";
+          }
+        }
+        // 覆盖层（贴纸/文字）：PNG 作为额外输入，按时间窗 overlay 到成片画布
+        var ovs = state.overlays.filter(function(o){ return o.end > o.start; });
+        if (ovs.length){
+          checkCancel();
+          setStep(0.87, 0.1, "正在叠加贴纸/文字…");
+          var args = ["-i", outName];
+          var chains = [];
+          var okOv = [];
+          for (var oi=0; oi<ovs.length; oi++){
+            var ov = ovs[oi];
+            var blob = null;
+            if (ov.kind === "text") blob = await textPngBlob(ov, H);
+            else blob = ov.imgBlob;
+            if (!blob) continue;
+            var fn = "ov" + oi + ".png";
+            try {
+              await inst.writeFile(fn, await fetchFile(blob));
+            } catch(e){ continue; }
+            written.push(fn);
+            var inp = okOv.length + 1;
+            okOv.push(ov);
+            if (ov.kind === "sticker"){
+              var pxH = Math.max(8, Math.round(ov.size * H)); if (pxH % 2) pxH += 1;
+              chains.push("[" + inp + ":v]scale=-2:" + pxH + "[ov" + inp + "]");
+            }
+          }
+          if (okOv.length){
+            var cur = "[0:v]";
+            for (var oj=0; oj<okOv.length; oj++){
+              var ov2 = okOv[oj];
+              var inp2 = oj + 1;
+              var srcLbl = ov2.kind === "sticker" ? "[ov" + inp2 + "]" : "[" + inp2 + ":v]";
+              var outLbl = "[v" + (oj + 1) + "]";
+              chains.push(cur + srcLbl + "overlay=x='W*" + ov2.x.toFixed(4) + "-w/2':y='H*" + ov2.y.toFixed(4) + "-h/2':enable='between(t," + ov2.start.toFixed(2) + "," + ov2.end.toFixed(2) + ")'" + outLbl);
+              cur = outLbl;
+            }
+            // args 里 -i 顺序须与 chains 的输入编号一致，按 okOv 顺序组装
+            args = ["-i", outName];
+            okOv.forEach(function(o2){ args.push("-i", "ov" + ovs.indexOf(o2) + ".png"); });
+            args.push("-filter_complex", chains.join(";"), "-map", cur, "-map", "0:a:0",
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy", "ovfinal.mp4");
+            written.push("ovfinal.mp4");
+            var codeO = await inst.exec(args);
+            if (codeO !== 0) throw new Error("贴纸/文字叠加失败");
+            outName = "ovfinal.mp4";
+          }
+        }
+        // 字幕：逐条渲染透明 PNG，底部居中按时间窗烧录（与贴纸/文字同一机制）
+        var subs = state.subtitles.filter(function(s){ return s.end > s.start && (s.text || "").trim(); })
+          .sort(function(a, b){ return a.start - b.start; });
+        if (subs.length){
+          checkCancel();
+          setStep(0.93, 0.05, "正在烧录字幕…");
+          var okSub = [];
+          for (var si = 0; si < subs.length; si++){
+            var sblob = await subtitlePngBlob(subs[si], W, H);
+            if (!sblob) continue;
+            var sfn = "sub" + si + ".png";
+            try { await inst.writeFile(sfn, await fetchFile(sblob)); }
+            catch(e){ continue; }
+            written.push(sfn);
+            okSub.push({ sub: subs[si], fn: sfn });
+          }
+          if (okSub.length){
+            var sArgs = ["-i", outName];
+            okSub.forEach(function(o){ sArgs.push("-i", o.fn); });
+            var sChains = [];
+            var scur = "[0:v]";
+            for (var sj = 0; sj < okSub.length; sj++){
+              var sb2 = okSub[sj].sub;
+              var sout = "[sv" + (sj + 1) + "]";
+              sChains.push(scur + "[" + (sj + 1) + ":v]overlay=x='(W-w)/2':y='H-h-H*0.04':enable='between(t," +
+                sb2.start.toFixed(2) + "," + sb2.end.toFixed(2) + ")'" + sout);
+              scur = sout;
+            }
+            sArgs.push("-filter_complex", sChains.join(";"), "-map", scur, "-map", "0:a:0",
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "copy", "subfinal.mp4");
+            written.push("subfinal.mp4");
+            var codeS = await inst.exec(sArgs);
+            if (codeS !== 0) throw new Error("字幕烧录失败");
+            outName = "subfinal.mp4";
+          }
+        }
+        checkCancel();
+        setStep(0.98, 0.02, "正在生成文件…");
+        var data = await inst.readFile(outName);
+        var blob2 = new Blob([data.buffer], { type: "video/mp4" });
+        await fsDel(inst, written);
+        ovProgress(1);
+        ovDone();
+        downloadBlob(blob2, "EasyEdit导出.mp4");
+        toast("导出完成，视频已开始下载");
+      } catch (err){
+        if (ff) await fsDel(ff, written);
+        if (task.cancel || (err && err.message === "已取消")){ ovDone(); return; }
+        ovError("导出失败：" + (err && err.message ? err.message : err) + "。可以检查网络后重试；素材较多/较长时请耐心等待。", function(){ exportVideo(); });
+      }
+    }
+
+    /* ================= 初始化 ================= */
+    renderMedia();
+    renderAudios();
+    renderFrameUI();
+    renderTimeline();
+    renderClipPanel();
+    renderSegments();
+    refreshExportBtn();
+    layoutPreview();
+    centerScrollOnPlayhead();
+    </script>
+  </body>
+</html>

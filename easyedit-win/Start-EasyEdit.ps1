@@ -46,6 +46,8 @@ if ($needDl) {
         $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
         if ($curl) {
           & curl.exe -L --fail --progress-bar -o "$dest.tmp" "$base/$f"
+          # 注意：Windows PowerShell 5.1 里原生命令失败不会抛异常，必须查 $LASTEXITCODE
+          if ($LASTEXITCODE -ne 0) { throw "curl exit code $LASTEXITCODE" }
         } else {
           Invoke-WebRequest -Uri "$base/$f" -OutFile "$dest.tmp"
         }

@@ -72,6 +72,7 @@
       .frame-bg{ position:absolute; inset:0; background-size:cover; background-position:center; display:none; }
       .rotwrap{ position:absolute; }
       .rotwrap video{ position:absolute; left:50%; top:50%; display:block; background:#000; }
+      .rotwrap canvas{ position:absolute; left:50%; top:50%; display:none; pointer-events:none; }
       .vignette-fx{
         position:absolute; inset:0; pointer-events:none; display:none;
         background:radial-gradient(ellipse at center, rgba(0,0,0,0) 52%, rgba(0,0,0,.58) 100%);
@@ -210,6 +211,12 @@
       .aclip .fade{ position:absolute; top:0; bottom:0; z-index:1; pointer-events:none; }
       .aclip .fade.fi{ left:0; background:linear-gradient(to right, rgba(0,0,0,.62), transparent); }
       .aclip .fade.fo{ right:0; background:linear-gradient(to left, rgba(0,0,0,.62), transparent); }
+      .clip .fade{ position:absolute; top:0; bottom:0; z-index:1; pointer-events:none; }
+      .clip .fade.fi{ left:0; background:linear-gradient(to right, rgba(0,0,0,.62), transparent); }
+      .clip .fade.fo{ right:0; background:linear-gradient(to left, rgba(0,0,0,.62), transparent); }
+      .clip .dzone{ position:absolute; top:0; bottom:0; left:0; z-index:1; pointer-events:none;
+        background:linear-gradient(to right, rgba(168,85,247,.55), transparent);
+        border-left:2px solid rgba(168,85,247,.9); }
       .aclip .aname{
         position:absolute; left:6px; right:6px; bottom:3px; font-size:10px; line-height:1.25; z-index:2;
         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#d8f5e5;
@@ -476,6 +483,7 @@
             <div class="frame-bg" id="frameBg"></div>
             <div class="rotwrap" id="rotWrap">
               <video id="video" playsinline preload="auto"></video>
+              <canvas id="pvDzCv"></canvas>
             </div>
             <div class="vignette-fx" id="vignetteFx"></div>
             <div class="ov-layer" id="ovLayer"></div>
@@ -1407,6 +1415,7 @@
       var bg = document.createElement("div"); bg.className = "cbadges"; bg.innerHTML = clipBadges(c); el.appendChild(bg);
       var cn = document.createElement("div"); cn.className = "cname"; cn.textContent = m ? m.name : "素材"; el.appendChild(cn);
       paintCutMarks(el, c);
+      appendVideoFadeDivs(el, c);
       var hl = document.createElement("div"); hl.className = "handle l"; hl.setAttribute("data-h", "l"); el.appendChild(hl);
       var hr = document.createElement("div"); hr.className = "handle r"; hr.setAttribute("data-h", "r"); el.appendChild(hr);
       attachClipGestures(el, c, arr);
@@ -1451,6 +1460,25 @@
       var fi = Math.min(c.fadeIn || 0, d), fo = Math.min(c.fadeOut || 0, d);
       if (fi > 0.01){ var f1 = document.createElement("div"); f1.className = "fade fi"; f1.style.width = (fi * state.pxPerSec) + "px"; el.appendChild(f1); }
       if (fo > 0.01){ var f2 = document.createElement("div"); f2.className = "fade fo"; f2.style.width = (fo * state.pxPerSec) + "px"; el.appendChild(f2); }
+    }
+    /* 视频片段淡化可视化：叠化=左侧紫色区，淡入/淡出=黑角（有叠化时头部只显示叠化区） */
+    function appendVideoFadeDivs(el, c){
+      var d = clipDur(c);
+      var dz = Math.min(c.dissolve || 0, d);
+      var fi = Math.min(c.fadeIn || 0, d), fo = Math.min(c.fadeOut || 0, d);
+      if (dz > 0.01){
+        var z = document.createElement("div"); z.className = "dzone";
+        z.style.width = Math.max(dz * state.pxPerSec, 5) + "px";
+        z.title = "叠化 " + c.dissolve + "s";
+        el.appendChild(z);
+      } else if (fi > 0.01){
+        var f1 = document.createElement("div"); f1.className = "fade fi";
+        f1.style.width = (fi * state.pxPerSec) + "px"; el.appendChild(f1);
+      }
+      if (fo > 0.01){
+        var f2 = document.createElement("div"); f2.className = "fade fo";
+        f2.style.width = (fo * state.pxPerSec) + "px"; el.appendChild(f2);
+      }
     }
     function renderAudioLane(laneEl, arr){
       clearLane(laneEl);
@@ -1910,6 +1938,30 @@
     /* ================= 预览引擎（原生 video，片段链式播放） ================= */
     var video = $("video");
     var bgmAudio = $("bgmAudio");
+    var pvDzCv = $("pvDzCv"), pvDzCtx = pvDzCv.getContext("2d");
+    var dzAnim = null;   // 真叠化预览：{start, dur}，canvas 里是上一段最后一帧
+    function clearDzAnim(){
+      dzAnim = null;
+      pvDzCv.style.display = "none";
+      pvDzCv.style.opacity = 1;
+    }
+    function syncDzCanvas(){
+      pvDzCv.style.width = video.style.width;
+      pvDzCv.style.height = video.style.height;
+      pvDzCv.style.transform = video.style.transform;
+    }
+    /* 叠化透明度（含真交叉混合）：t 在叠化窗口内时 video 淡入 + canvas 淡出 */
+    function applyVideoOpacity(c, arr, idx, t){
+      var op = videoFadeAt(c, arr, idx, t).toFixed(3);
+      if (dzAnim && t >= dzAnim.start - 0.02 && t <= dzAnim.start + dzAnim.dur + 0.02){
+        var p = Math.max(0, Math.min(1, (t - dzAnim.start) / dzAnim.dur));
+        video.style.opacity = p.toFixed(3);
+        pvDzCv.style.opacity = (1 - p).toFixed(3);
+      } else {
+        video.style.opacity = op;
+        if (dzAnim) clearDzAnim();
+      }
+    }
     var pvIdx = -1;
     var pvTrack = 0;              // 当前预览画面的视频轨：0=V1，1=V2
     var pvMediaId = null;
@@ -2096,6 +2148,7 @@
       video.style.width = (sw * k) + "px";
       video.style.height = (sh * k) + "px";
       video.style.transform = "translate(-50%,-50%) rotate(" + (c.rot || 0) + "deg)";
+      if (dzAnim) syncDzCanvas();
       var f = filterById(c.filter || "none");
       video.style.filter = f.css || "";
       $("vignetteFx").style.display = (f.fx === "vignette") ? "block" : "none";
@@ -2135,6 +2188,7 @@
     async function showAt(t, autoplay){
       var myToken = ++pvToken;
       gapT0 = null;
+      clearDzAnim();
       if (!state.clips.length && !state.clips2.length){
         resetPvLoc(); video.removeAttribute("src");
         try { video.pause(); } catch(e){}
@@ -2157,6 +2211,24 @@
       var m = mediaById(clip.mediaId);
       if (!m){ syncAudioTracks(t, autoplay); return; }
       if (pvIdx !== v.idx || pvTrack !== v.track || pvMediaId !== clip.mediaId){
+        /* ★ 真叠化预览：切到带叠化的 V1 片段时，抓拍当前帧（上一段尾帧）做交叉混合 */
+        var dzDur = Math.min(clip.dissolve || 0, clipDur(clip));
+        if (dzDur > 0.01 && v.track === 0 && v.idx > 0 && video.videoWidth > 0 &&
+            pvIdx === v.idx - 1 && pvTrack === 0){
+          var parrDz = state.clips;
+          var pc = parrDz[v.idx - 1];
+          var gapBefore = clipStart(v.idx, parrDz) - (clipStart(v.idx - 1, parrDz) + clipDur(pc));
+          if (Math.abs(gapBefore) < 0.05){
+            try {
+              pvDzCv.width = video.videoWidth; pvDzCv.height = video.videoHeight;
+              pvDzCtx.drawImage(video, 0, 0);
+              syncDzCanvas();
+              pvDzCv.style.display = "block";
+              pvDzCv.style.opacity = 1;
+              dzAnim = { start: clipStart(v.idx, parrDz), dur: dzDur };
+            } catch(e){ clearDzAnim(); }
+          }
+        }
         pvIdx = v.idx; pvTrack = v.track; pvMediaId = clip.mediaId;
         if (video.getAttribute("src") !== m.url){
           video.src = m.url;
@@ -2166,9 +2238,9 @@
       }
       applyPreviewAudio();
       video.playbackRate = clip.speed || 1;   // 变速预览
-      /* 淡入淡出/叠化：预览用透明度近似 */
+      /* 淡入淡出/叠化：叠化窗口内真交叉混合，其余用透明度近似 */
       var parr = v.track === 1 ? state.clips2 : state.clips;
-      video.style.opacity = videoFadeAt(clip, parr, v.idx, t).toFixed(3);
+      applyVideoOpacity(clip, parr, v.idx, t);
       layoutPreview();
       var target = clip.inn + v.local * (clip.speed || 1);
       if (Math.abs(video.currentTime - target) > 0.06){
@@ -2209,7 +2281,7 @@
           updatePlayheadUI();
           ensurePlayheadVisible();
           updateZoomTransform();
-          video.style.opacity = videoFadeAt(clip, arr, pvIdx, state.playhead).toFixed(3);
+          applyVideoOpacity(clip, arr, pvIdx, state.playhead);
           renderOvVisibility();
         }
       } else {

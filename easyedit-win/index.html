@@ -222,7 +222,7 @@
       .clip .cut.l{ left:0; border-right:1px solid rgba(255,255,255,.45); }
       .clip .cut.r{ right:0; border-left:1px solid rgba(255,255,255,.45); }
       .playhead{
-        position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px;
+        position:absolute; top:0; bottom:0; width:2px; margin-left:-1px;
         background:var(--red2); z-index:8; pointer-events:none;
       }
       .playhead::before{
@@ -230,7 +230,7 @@
         border:6px solid transparent; border-top:8px solid var(--red2);
       }
       .playhead-grab{
-        position:absolute; top:0; bottom:0; left:50%; width:44px; margin-left:-22px; z-index:9; cursor:ew-resize; touch-action:none;
+        position:absolute; top:0; bottom:0; width:44px; margin-left:-22px; z-index:9; cursor:ew-resize; touch-action:none;
       }
       .trim-tip{
         position:fixed; z-index:45; display:none; pointer-events:none;
@@ -505,7 +505,7 @@
           <button class="btn small danger" id="btnDelTop" disabled>删除片段<span class="kbd">Del</span></button>
         </div>
         <div class="timeline-head">
-          <span class="lbl">时间线 · 红针固定中央，拖动时间线在针下滚动 · 拖片段边缘裁剪 · 拖片段排序</span>
+          <span class="lbl">时间线 · 拖红针定位到任意帧 · 拖片段边缘裁剪 · 拖片段排序</span>
           <button class="zoom-btn" id="btnSnap" title="吸附开关：开=片段首尾相接，关=可自由留白">🧲吸附开</button>
           <button class="zoom-btn" id="zoomOut">−</button>
           <button class="zoom-btn" id="zoomIn">＋</button>
@@ -868,6 +868,9 @@
           toast(m.rot ? "已预设旋转 " + m.rot + "°，加入时间线时生效" : "已取消预设旋转");
         });
         acts.appendChild(bAdd); acts.appendChild(bExt); acts.appendChild(bRot);
+        var bDel = document.createElement("button"); bDel.className = "btn small danger"; bDel.textContent = "删除";
+        bDel.addEventListener("click", function(){ deleteMedia(m.id); });
+        acts.appendChild(bDel);
         row.appendChild(img); row.appendChild(meta); row.appendChild(acts);
         list.appendChild(row);
       });
@@ -880,6 +883,37 @@
       state.selectedClipId = c.id;
       renderTimeline(); renderClipPanel(); renderSegments(); refreshExportBtn();
       toast("已加入时间线");
+    }
+
+    /* 删除素材：释放 URL 与帧缓存；若有片段在用，先确认再级联删除 */
+    function deleteMedia(mediaId){
+      var m = mediaById(mediaId); if (!m) return;
+      var usedClips = state.clips.filter(function(c){ return c.mediaId === mediaId; });
+      function doDelete(){
+        try { URL.revokeObjectURL(m.url); } catch(e){}
+        if (frameCache[m.id]) delete frameCache[m.id];
+        frameQueue = frameQueue.filter(function(x){ return x.id !== mediaId; });
+        if (usedClips.length){
+          var usedIds = {};
+          usedClips.forEach(function(c){ usedIds[c.id] = 1; });
+          state.clips = state.clips.filter(function(c){ return !usedIds[c.id]; });
+          if (state.selectedClipId && usedIds[state.selectedClipId]){
+            state.selectedClipId = state.clips.length ? state.clips[0].id : null;
+          }
+          pausePreview();
+          pvIdx = -1; pvMediaId = null;
+          if (state.playhead > totalDur()) state.playhead = totalDur();
+        }
+        state.media = state.media.filter(function(x){ return x.id !== mediaId; });
+        renderMedia(); renderTimeline(); renderClipPanel(); renderSegments(); refreshExportBtn();
+        showAt(state.playhead, false);
+        toast("已删除素材" + (usedClips.length ? "（含 " + usedClips.length + " 个相关片段）" : ""));
+      }
+      if (usedClips.length){
+        showConfirm("删除素材？", "「" + m.name + "」有 " + usedClips.length + " 个片段在时间线上，删除素材会一并删除这些片段。继续吗？", doDelete);
+      } else {
+        doDelete();
+      }
     }
 
     /* ================= 胶片帧抽取（离屏 video+canvas，按间隔抽帧并缓存） ================= */
@@ -1282,6 +1316,7 @@
 
     function updatePlayheadUI(){
       $("tCur").textContent = fmtClock(state.playhead);
+      positionNeedle();
     }
     function refreshExportBtn(){ $("btnExport").disabled = !state.clips.length; }
 
@@ -1289,30 +1324,25 @@
       var tot = totalDur();
       state.playhead = Math.max(0, Math.min(t, tot));
       updatePlayheadUI();
-      centerScrollOnPlayhead();
+      ensurePlayheadVisible();
       if (window.updateEditBar) window.updateEditBar();
       if (preview !== false) showAt(state.playhead, state.playing);
       renderOvVisibility();
     }
-    /* 红针固定中央：靠滚动让 playhead 时刻对准容器中心 */
-    function centerScrollOnPlayhead(){
-      tlScroll.scrollLeft = state.playhead * state.pxPerSec;
+    /* 红针：内容坐标定位（跟随时间线滚动），拖动时针跟手指走 */
+    function needleX(){ return TL_PAD + state.playhead * state.pxPerSec; }
+    function positionNeedle(){
+      var x = needleX() + "px";
+      var ph = $("playhead"), gr = $("playheadGrab");
+      if (ph) ph.style.left = x;
+      if (gr) gr.style.left = x;
     }
-    /* 用户滚动时间线 → 播放头跟随针下时刻（程序滚动时 playhead 已对齐，差值≈0 自动跳过） */
-    var scrollRaf = 0;
-    tlScroll.addEventListener("scroll", function(){
-      var t = tlScroll.scrollLeft / state.pxPerSec;
-      if (Math.abs(t - state.playhead) < 0.6 / state.pxPerSec) return;
-      state.playhead = Math.max(0, Math.min(t, totalDur()));
-      updatePlayheadUI();
-      if (window.updateEditBar) window.updateEditBar();
-      if (scrollRaf) return;
-      scrollRaf = requestAnimationFrame(function(){
-        scrollRaf = 0;
-        if (!state.playing) showAt(state.playhead, false);
-        renderOvVisibility();
-      });
-    });
+    /* 播放头出可视区时跟随滚动（边缘翻页），平时不打扰 */
+    function ensurePlayheadVisible(){
+      var x = needleX(), sl = tlScroll.scrollLeft, vw = tlScroll.clientWidth;
+      if (x < sl + 24) tlScroll.scrollLeft = Math.max(0, x - 80);
+      else if (x > sl + vw - 24) tlScroll.scrollLeft = x - vw + 80;
+    }
 
     /* 标尺点按/拖动定位 */
     (function(){
@@ -1327,15 +1357,20 @@
       });
       ruler.addEventListener("pointermove", function(e){ if (scrubbing) setPlayhead(posToTime(e)); });
       ruler.addEventListener("pointerup", function(){ scrubbing = false; });
-      /* 拖中央红针 = 直接 scrub：按住红针左右拖，播放头 1:1 跟到对应帧（右=往前） */
-      var grab = $("playheadGrab"), gDrag = false, gStartX = 0, gStartT = 0;
+      /* 拖红针 = 针跟手指走，直接定位到对应帧 */
+      var grab = $("playheadGrab"), gDrag = false;
+      function needleTimeFromEvent(e){
+        var r = tlScroll.getBoundingClientRect();
+        return (e.clientX - r.left + tlScroll.scrollLeft - TL_PAD) / state.pxPerSec;
+      }
       grab.addEventListener("pointerdown", function(e){
-        gDrag = true; gStartX = e.clientX; gStartT = state.playhead;
+        gDrag = true;
         grab.setPointerCapture(e.pointerId); e.preventDefault();
+        setPlayhead(needleTimeFromEvent(e));
       });
       grab.addEventListener("pointermove", function(e){
         if (!gDrag) return;
-        setPlayhead(gStartT + (e.clientX - gStartX) / state.pxPerSec);
+        setPlayhead(needleTimeFromEvent(e));
       });
       grab.addEventListener("pointerup", function(){ gDrag = false; });
       grab.addEventListener("pointercancel", function(){ gDrag = false; });
@@ -1345,7 +1380,7 @@
     function setZoom(px){
       state.pxPerSec = Math.max(4, Math.min(140, px));
       renderTimeline();
-      centerScrollOnPlayhead();
+      ensurePlayheadVisible();
     }
     $("zoomIn").addEventListener("click", function(){ setZoom(state.pxPerSec * 1.4); });
     $("zoomOut").addEventListener("click", function(){ setZoom(state.pxPerSec / 1.4); });
@@ -1764,14 +1799,14 @@
             pausePreview();
             state.playhead = totalDur();
             updatePlayheadUI();
-            centerScrollOnPlayhead();
+            ensurePlayheadVisible();
             renderOvVisibility();
             return;
           }
         } else {
           state.playhead = Math.min(t, totalDur());
           updatePlayheadUI();
-          centerScrollOnPlayhead();
+          ensurePlayheadVisible();
           updateZoomTransform();
           renderOvVisibility();
         }
@@ -1785,11 +1820,11 @@
           gapT0 = null;
           pausePreview();
           state.playhead = tot;
-          updatePlayheadUI(); centerScrollOnPlayhead(); renderOvVisibility();
+          updatePlayheadUI(); ensurePlayheadVisible(); renderOvVisibility();
           return;
         }
         state.playhead = nt;
-        updatePlayheadUI(); centerScrollOnPlayhead(); renderOvVisibility();
+        updatePlayheadUI(); ensurePlayheadVisible(); renderOvVisibility();
         var loc2 = locate(nt);
         if (loc2 && !loc2.gap){ gapT0 = null; showAt(nt, true); return; }
       }
@@ -2120,7 +2155,7 @@
       c.rot = (((c.rot || 0) + dir * 90) % 360 + 360) % 360;
       var i2 = state.clips.indexOf(c);
       renderTimeline(); renderClipPanel(); renderSegments();
-      if (i2 >= 0){ state.playhead = clipStart(i2); updatePlayheadUI(); centerScrollOnPlayhead(); }
+      if (i2 >= 0){ state.playhead = clipStart(i2); updatePlayheadUI(); ensurePlayheadVisible(); }
       showAt(state.playhead, state.playing);
       toast("片段已旋转到 " + c.rot + "°");
     }
@@ -2787,7 +2822,7 @@
     window.addEventListener("resize", function(){
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(function(){
-        renderTimeline(); centerScrollOnPlayhead(); layoutPreview();
+        renderTimeline(); ensurePlayheadVisible(); layoutPreview();
       }, 120);
     });
     </script>
@@ -3276,7 +3311,7 @@
     renderSegments();
     refreshExportBtn();
     layoutPreview();
-    centerScrollOnPlayhead();
+    ensurePlayheadVisible();
     </script>
   </body>
 </html>

@@ -188,6 +188,7 @@
       .lane{ position:relative; margin-top:2px; }
       .lane-v{ height:58px; }
       .lane-a{ height:40px; }
+      .lane.drop-hint{ outline:2px dashed rgba(255,255,255,.55); outline-offset:-2px; border-radius:8px; }
       .lane-tag{
         position:sticky; left:6px; top:3px; z-index:6; display:inline-block;
         font-size:10px; font-weight:700; color:#0b0b0d;
@@ -549,7 +550,7 @@
           <button class="btn small danger" id="btnDelTop" disabled>删除片段<span class="kbd">Del</span></button>
         </div>
         <div class="timeline-head">
-          <span class="lbl">时间线 · V2/V1 视频轨 + A1/A2 音轨 · 拖红针定位到任意帧 · 拖片段边缘裁剪 · 拖片段排序</span>
+          <span class="lbl">时间线 · V2/V1/A1/A2 四轨 · 拖红针定位 · 拖片段边缘裁剪 · 横拖排序/竖拖换轨</span>
           <button class="zoom-btn" id="btnSnap" title="吸附开关：开=片段首尾相接，关=可自由留白">🧲吸附开</button>
           <button class="zoom-btn" id="zoomOut">−</button>
           <button class="zoom-btn" id="zoomIn">＋</button>
@@ -1640,15 +1641,45 @@
     function hideTrimTip(){ $("trimTip").style.display = "none"; }
 
     /* 片段手势：点选 / 拖把手裁剪（改源区间，时长按 /speed 换算） / 排序（鼠标直接拖，触摸长按拖） */
+    /* 指针 x → 时间线秒数（标尺口径） */
+    function pointerToTime(e){
+      var r = ruler.getBoundingClientRect();
+      return Math.max(0, (e.clientX - r.left) / state.pxPerSec);
+    }
     function attachClipGestures(el, clip, arr){
       arr = arr || state.clips;
-      var startX = 0, mode = null, longTimer = null, moved = false, origIn = 0, origOut = 0, startIdx = 0, startScroll = 0, isMouse = false;
+      var startX = 0, startY = 0, mode = null, longTimer = null, moved = false, origIn = 0, origOut = 0, startIdx = 0, startScroll = 0, isMouse = false;
+      var hintedLane = null;
+      /* 同类轨道：视频 V2/V1，音频 A1/A2 */
+      function kindLanes(){ return clip.kind === "a" ? [laneA1, laneA2] : [laneV2, laneV1]; }
+      function laneInfo(laneEl){
+        if (laneEl === laneV2) return { arr: state.clips2, track: 1 };
+        if (laneEl === laneV1) return { arr: state.clips, track: 0 };
+        if (laneEl === laneA1) return { arr: state.a1, track: 0 };
+        if (laneEl === laneA2) return { arr: state.a2, track: 1 };
+        return null;
+      }
+      function laneAtY(y){
+        if (y == null) return null;
+        var lanes = kindLanes();
+        for (var i=0;i<lanes.length;i++){
+          var r = lanes[i].getBoundingClientRect();
+          if (y >= r.top - 8 && y <= r.bottom + 8) return lanes[i];
+        }
+        return null;
+      }
+      function hintLane(lane){
+        if (hintedLane === lane) return;
+        if (hintedLane) hintedLane.classList.remove("drop-hint");
+        hintedLane = lane;
+        if (lane) lane.classList.add("drop-hint");
+      }
       el.addEventListener("pointerdown", function(e){
         var h = e.target.closest(".handle");
         isMouse = e.pointerType === "mouse";
         state.selectedClipId = clip.id;
         renderTimelineSelection(); renderClipPanel(); renderSegments();
-        startX = e.clientX; moved = false; startScroll = tlScroll.scrollLeft;
+        startX = e.clientX; startY = e.clientY; moved = false; startScroll = tlScroll.scrollLeft;
         origIn = clip.inn; origOut = clip.out;
         if (h){
           mode = h.getAttribute("data-h") === "l" ? "trimL" : "trimR";
@@ -1668,13 +1699,19 @@
       });
       el.addEventListener("pointermove", function(e){
         if (!mode) return;
-        var dx = e.clientX - startX;
-        if (Math.abs(dx) > 6) moved = true;
+        var dx = e.clientX - startX, dy = e.clientY - startY;
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
         if (mode === "maybe"){
           if (moved && isMouse){
             clearTimeout(longTimer);
             mode = "drag"; startIdx = arr.indexOf(clip);
             el.classList.add("dragging");
+          } else if (moved && !isMouse && Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx) * 1.2){
+            /* 触屏纵滑：直接进入跨轨拖拽 */
+            clearTimeout(longTimer);
+            mode = "drag"; startIdx = arr.indexOf(clip);
+            el.classList.add("dragging");
+            if (navigator.vibrate) navigator.vibrate(12);
           } else if (moved){
             clearTimeout(longTimer); tlScroll.scrollLeft = startScroll - dx;
           }
@@ -1691,15 +1728,50 @@
           layoutClips(); showAt(state.playhead, false);
           showTrimTip(e, "出点 " + fmt(clip.out) + " · 片段长 " + fmt(clipDur(clip)));
         } else if (mode === "drag"){
-          el.style.transform = "translateX(" + dx + "px)";
+          el.style.transform = "translate(" + dx + "px," + dy + "px)";
+          hintLane(laneAtY(e.clientY));
         }
       });
       function end(e){
         hideTrimTip();
         if (longTimer) clearTimeout(longTimer);
+        hintLane(null);
         if (mode === "drag"){
           el.style.transform = "";
           el.classList.remove("dragging");
+          var dropInfo = laneInfo(laneAtY(e.clientY));
+          if (dropInfo && dropInfo.arr !== arr){
+            /* ★ 跨轨投放：V1↔V2 / A1↔A2 */
+            var si = arr.indexOf(clip);
+            if (si >= 0) arr.splice(si, 1);
+            var tarr = dropInfo.arr;
+            var dur = clipDur(clip);
+            var dropT = pointerToTime(e);
+            var target = tarr.length;
+            if (state.snap){
+              for (var i=0;i<tarr.length;i++){
+                if (dropT < clipStart(i, tarr) + clipDur(tarr[i]) * 0.5){ target = i; break; }
+              }
+              clip.gap = 0;
+            } else {
+              for (var j=0;j<tarr.length;j++){
+                if (dropT < clipStart(j, tarr) + clipDur(tarr[j])){ target = j; break; }
+              }
+              var prevEnd = target === 0 ? 0 : clipStart(target - 1, tarr) + clipDur(tarr[target - 1]);
+              var nextStart = (target < tarr.length) ? clipStart(target, tarr) : Infinity;
+              var hi = (nextStart === Infinity) ? Infinity : nextStart - dur;
+              var ns = Math.max(prevEnd, Math.min(dropT, hi));
+              if (!isFinite(ns)) ns = prevEnd;
+              clip.gap = Math.max(0, +(ns - prevEnd).toFixed(2));
+            }
+            tarr.splice(target, 0, clip);
+            clip.track = dropInfo.track;
+            if (state.playhead > totalDur()) state.playhead = totalDur();
+            renderTimeline(); renderClipPanel(); renderSegments(); showAt(state.playhead, false);
+            toast("已移到 " + (clip.kind === "a" ? (dropInfo.track === 1 ? "A2" : "A1") : (dropInfo.track === 1 ? "V2" : "V1")) + " 轨");
+            mode = null;
+            return;
+          }
           var idx = arr.indexOf(clip);
           if (state.snap){
             var myW = clipDur(clip) * state.pxPerSec;

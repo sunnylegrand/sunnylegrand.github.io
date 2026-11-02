@@ -29,6 +29,8 @@
   h1 { font-size: 27px; font-weight: 700; letter-spacing: .5px; }
   .tagline { font-size: 14px; color: #9a9aa0; margin-top: 2px; }
   h2 { font-size: 19px; font-weight: 700; margin: 30px 0 10px; }
+  h3 { font-size: 16px; font-weight: 700; margin: 20px 0 8px; color: #fff; }
+  h3:first-child { margin-top: 4px; }
   p, li { font-size: 14.5px; color: #d7d7da; }
   .muted { color: #9a9aa0; font-size: 13.5px; }
   ul { padding-left: 20px; }
@@ -80,24 +82,32 @@
       <a class="btn" href="../easyedit/">Open EasyEdit</a>
     </div>
 
-    <h2>Mac Offline Version</h2>
+    <h2>Desktop Offline Versions</h2>
     <div class="card">
-      <p>No internet? No problem. The Mac package runs EasyEdit locally on your machine — the FFmpeg.wasm editing engine downloads automatically on first launch (about 32&nbsp;MB, once), then everything works fully offline. Your videos are processed on your Mac and never uploaded. Same features as the web version.</p>
-      <p><b>Install</b></p>
+      <p>No internet? No problem. The desktop packages run EasyEdit locally on your computer — the FFmpeg.wasm editing engine downloads automatically on first launch (about 32&nbsp;MB, once), then everything works fully offline. Your videos are processed on your own machine and never uploaded. Same features as the web version.</p>
+      <p>Get the code: <code>git clone https://github.com/sunnylegrand/sunnylegrand.github.io.git</code> (update later with <code>git pull</code>), or use the "Download All Code (ZIP)" button below — both folders are inside.</p>
+
+      <h3>🍎 Mac</h3>
+      <p><b>Install:</b> open the <code>easyedit-mac</code> folder.</p>
+      <p><b>Run:</b> <code>bash 启动EasyEdit.command</code> in Terminal, or double-click <code>启动EasyEdit.command</code>.</p>
       <ul>
-        <li>Clone the site code (once): <code>git clone https://github.com/sunnylegrand/sunnylegrand.github.io.git</code> — to update later, just <code>git pull</code> inside the folder.</li>
-        <li>Open the <code>easyedit-mac</code> folder.</li>
-        <li>Run <code>bash 启动EasyEdit.command</code> (or double-click it). First launch downloads the engine; afterwards it's fully offline.</li>
-        <li>If macOS says it can't verify the developer: right-click the file → <b>Open</b> → click <b>Open</b> in the dialog. You only need to do this once.</li>
+        <li>If macOS says it can't verify the developer: right-click the file → <b>Open</b> → click <b>Open</b> in the dialog. Only needed once.</li>
         <li>Your browser opens EasyEdit automatically at <code>http://localhost:8901/</code>.</li>
+        <li>Run the script each time you want to edit; close the Terminal window when you're done.</li>
+        <li>Don't delete or rename <code>index.html</code> / <code>vendor</code> — that's the app and its engine.</li>
       </ul>
-      <p><b>Daily use</b></p>
+
+      <h3>🪟 Windows</h3>
+      <p><b>Install:</b> open the <code>easyedit-win</code> folder (Windows 10 or later).</p>
+      <p><b>Run:</b> double-click <code>启动EasyEdit.bat</code>.</p>
       <ul>
-        <li>Run the script whenever you want to edit; close the Terminal window when you're done.</li>
-        <li>Don't delete or rename <code>index.html</code> / <code>vendor</code> inside the folder — that's the app and its engine.</li>
-        <li>Works best in Chrome or Edge; Safari works too.</li>
+        <li>If SmartScreen warns about an unrecognized app: click "More info" → "Run anyway". Only needed once.</li>
+        <li>Keep the black window open while editing — that's the local server. Your browser opens EasyEdit automatically at <code>http://localhost:8901/</code>.</li>
+        <li>Close the black window when you're done.</li>
+        <li>Don't delete or rename <code>index.html</code> / <code>vendor</code> / <code>Start-EasyEdit.ps1</code>.</li>
       </ul>
-      <p class="muted">No Git? Use the "Download All Code (ZIP)" button below — the <code>easyedit-mac</code> folder is inside. Full instructions are in the folder's <code>README.md</code>.</p>
+
+      <p class="muted">Works best in Chrome or Edge; Safari works too. Full instructions: <code>README.md</code> inside each folder.</p>
     </div>
 
     <h2>Code Download</h2>

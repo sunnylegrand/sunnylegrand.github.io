@@ -1354,7 +1354,7 @@
       if (!state.bgm) return;
       state.bgm.volume = this.value / 100;
       $("bgmVolVal").textContent = this.value + "%";
-      $("bgmAudio").volume = state.bgm.volume;
+      setAudVol($("bgmAudio"), state.bgm.volume, false);
     });
     $("bgmRemove").addEventListener("click", clearBgm);
     $("bgmStripOff").addEventListener("click", clearBgm);
@@ -2107,6 +2107,18 @@
       if (fo > 0.01) f = Math.min(f, Math.max(0, (d - local) / Math.min(fo, d)));
       return Math.max(0, Math.min(1.5, v)) * f;
     }
+    var IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+    /* iOS Safari 上 volume 属性 JS 不可设（系统直接忽略，读永远返回 1），静音必须走 muted 属性；
+       桌面端两者都设。vol 为 0 时也顺手 muted，保证 iOS 上"拉到 0"能静音。 */
+    function setAudVol(el, vol, muted){
+      if (!el) return;
+      try {
+        var v = (vol == null ? 1 : vol);
+        el.muted = !!muted || !(v > 0);
+        el.volume = Math.max(0, Math.min(1.5, v));
+      } catch(e){}
+    }
     var auSyncIdx = [-2, -2];   // 每轨当前已同步的音频片段 idx（-1=空，-2=未同步）
     function audIdxAt(k, t){
       var arr = k === 0 ? state.a1 : state.a2;
@@ -2132,7 +2144,7 @@
       if (src && Math.abs((main.currentTime || 0) - target) > 0.25){
         try { main.currentTime = Math.max(0, target); } catch(e){}
       }
-      main.volume = audioVolAt(cur, loc.local);
+      setAudVol(main, audioVolAt(cur, loc.local), cur.muted);
       var xf = cur.xfade || 0;
       if (xf > 0.01 && loc.local < xf && loc.idx > 0){
         var prv = arr[loc.idx - 1];
@@ -2143,12 +2155,12 @@
         if (psrc && Math.abs((tail.currentTime || 0) - pTarget) > 0.25){
           try { tail.currentTime = Math.max(0, pTarget); } catch(e){}
         }
-        var pvol = (prv.volume == null ? 1 : prv.volume);
-        tail.volume = Math.max(0, Math.min(1.5, pvol)) * Math.max(0, 1 - loc.local / xf);
+        var pvol = (prv.muted ? 0 : (prv.volume == null ? 1 : prv.volume));
+        setAudVol(tail, Math.max(0, Math.min(1.5, pvol)) * Math.max(0, 1 - loc.local / xf), prv.muted);
       } else {
         tail._ac = null;
         try { tail.pause(); } catch(e){}
-        tail.volume = 0;
+        setAudVol(tail, 0, true);
       }
       if (autoplay && src){
         var pp = main.play(); if (pp && pp.catch) pp.catch(function(){});
@@ -2177,11 +2189,11 @@
           var arr = main._ac.track === 1 ? state.a2 : state.a1;
           var ai = arr.indexOf(main._ac);
           var local = ai >= 0 ? Math.max(0, t - clipStart(ai, arr)) : 0;
-          main.volume = audioVolAt(main._ac, local);
+          setAudVol(main, audioVolAt(main._ac, local), main._ac.muted);
           if (tail && tail._ac && !tail.paused){
             var xf = tail._xf || 0;
             var pvol = tail._ac.muted ? 0 : (tail._ac.volume == null ? 1 : tail._ac.volume);
-            tail.volume = xf > 0.01 ? Math.max(0, Math.min(1.5, pvol)) * Math.max(0, 1 - local / xf) : 0;
+            setAudVol(tail, xf > 0.01 ? Math.max(0, Math.min(1.5, pvol)) * Math.max(0, 1 - local / xf) : 0, tail._ac.muted);
             if (local >= xf && xf > 0.01){ try { tail.pause(); } catch(e){} tail._ac = null; }
           }
         }
@@ -2218,10 +2230,11 @@
     }
     function applyPreviewAudio(){
       var c = pvClip();
-      var v = 0;
-      if (c && !c.muted) v = c.volume;
-      if (state.bgm && state.bgm.mode === "replace") v = 0;
-      video.volume = Math.max(0, Math.min(1, v));
+      var muted = !c || !!c.muted;
+      if (state.bgm && state.bgm.mode === "replace") muted = true;
+      var v = (c && !c.muted) ? c.volume : 0;
+      if (v == null) v = 1;
+      setAudVol(video, v, muted);
     }
     /* 预览舞台布局：画幅框（目标画布比例）居中 → 内容按 crop 后尺寸 contain 贴合 →
        rotwrap 定位到裁剪窗 → video 按源尺寸居中旋转；变焦用 rotwrap scale 近似（绕裁剪中心） */
@@ -2290,7 +2303,7 @@
       var a = audioById(state.bgm.audioId);
       if (!a){ bgmAudio.pause(); return; }
       if (bgmAudio.getAttribute("src") !== a.url) bgmAudio.src = a.url;
-      bgmAudio.volume = state.bgm.volume;
+      setAudVol(bgmAudio, state.bgm.volume, false);
       if (state.playing){
         if (restart || bgmAudio.paused){
           if (a.duration) bgmAudio.currentTime = state.playhead % a.duration;
@@ -3041,6 +3054,7 @@
       rg.addEventListener("change", function(){ renderClipPanel(); });
       f.appendChild(fl); f.appendChild(rg);
       p.appendChild(f);
+      if (IS_IOS) p.appendChild(panelNote("iPhone 上预览音量请用手机音量键；滑杆拉到 0 为静音，静音按钮可用。数值会存下来，导出按此生效。"));
       p.appendChild(stepChips("淡入", [0, 0.5, 1, 2, 3, 5], c.fadeIn || 0, function(v){ c.fadeIn = v; renderTimeline(); renderClipPanel(); }));
       p.appendChild(stepChips("淡出", [0, 0.5, 1, 2, 3, 5], c.fadeOut || 0, function(v){ c.fadeOut = v; renderTimeline(); renderClipPanel(); }));
       p.appendChild(stepChips("交叉淡化", [0, 0.5, 1, 1.5, 2, 3], c.xfade || 0, function(v){ c.xfade = v; renderTimeline(); renderClipPanel(); }));
@@ -3174,6 +3188,7 @@
         rg.addEventListener("change", function(){ renderClipPanel(); });
         f.appendChild(fl); f.appendChild(rg);
         p.appendChild(f);
+        if (IS_IOS) p.appendChild(panelNote("iPhone 上预览音量请用手机音量键；滑杆拉到 0 为静音，静音按钮可用。数值会存下来，导出按此生效。"));
       } else if (t === "fade" && c && c.kind !== "a"){
         p.appendChild(stepChips("淡入（从黑场渐显）", [0, 0.5, 1, 2, 3], c.fadeIn || 0, function(v){ c.fadeIn = v; renderTimeline(); renderClipPanel(); }));
         p.appendChild(stepChips("淡出（渐隐到黑场）", [0, 0.5, 1, 2, 3], c.fadeOut || 0, function(v){ c.fadeOut = v; renderTimeline(); renderClipPanel(); }));
